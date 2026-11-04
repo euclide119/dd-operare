@@ -35,35 +35,42 @@ function nivel(t, memo) {
   memo[t.id] = prev.length ? 1 + Math.max(...prev.map((x) => nivel(x, memo))) : 0;
   return memo[t.id];
 }
+/* aceleași etape pentru orice comandă, ca la un colet: pașii sunt doar detaliul etapei */
 function fluxComanda(oid) {
-  const o = D('comenzi')[oid]; const ts = orderTasks(oid).filter((t) => t.stare !== 'anulat');
-  const memo = {}, niv = {}; ts.forEach((t) => { const n = nivel(t, memo); (niv[n] = niv[n] || []).push(t); });
-  const st = [{ k: 'plata', n: platita(o) ? 'Plătită' : 'Plată', stare: platita(o) ? 'ok' : 'cur', la: o.plata_la, ts: [] }];
-  st.push({ k: 'preluare', n: 'Preluată', stare: preluata(o) ? 'ok' : platita(o) ? 'cur' : 'urm', la: o.preluata_la, sub: o.preluata_de || '', ts: [] });
-  Object.keys(niv).map(Number).sort((a, b) => a - b).forEach((n) => {
-    const g = niv[n], h = umane(g), gata = g.filter((t) => t.stare === 'terminat').length;
-    const nume = g.length === 1 ? g[0].n : h.length === 1 ? h[0].n + ' + ' + (g.length - 1) + ' automate' : !h.length ? 'Date automate (' + g.length + ')' : h.length === 2 && g.length === 2 ? h[0].n + ' + ' + h[1].n : h.length + ' pași' + (g.length > h.length ? ' + ' + (g.length - h.length) + ' automate' : '');
-    const stare = gata === g.length ? 'ok' : g.some((t) => PB_T.includes(t.stare) || slaInfo(t).stare === 'late') ? 'pb' : g.some((t) => ACTIVE_T.includes(t.stare)) ? 'cur' : 'urm';
-    st.push({ k: 'n' + n, n: nume, stare, ts: g, sub: g.length > 1 ? gata + '/' + g.length : '', la: gata === g.length ? Math.max(...g.map((t) => t.terminat_la || 0)) : null });
+  const o = D('comenzi')[oid]; const om = umane(orderTasks(oid).filter((t) => t.stare !== 'anulat'));
+  const memo = {}, combina = om.filter((t) => tipPas(t) === 'combinare'), prag = combina.length ? Math.min(...combina.map((t) => nivel(t, memo))) : Infinity;
+  const din = (f) => om.filter((t) => nivel(t, memo) < prag && tipPas(t) === f);
+  const st = [{ k: 'plata', n: platita(o) ? 'Plătită' : 'Plată', stare: platita(o) ? 'ok' : 'urm', la: o.plata_la, ts: [] }];
+  st.push({ k: 'preluare', n: preluata(o) ? 'Preluată' : 'De preluat', stare: preluata(o) ? 'ok' : 'urm', la: o.preluata_la, sub: o.preluata_de || '', ts: [] });
+  [['spec', 'La specialiști', din('document')], ['verif', 'Verificare', din('verificare')], ['final', 'Document final', om.filter((t) => nivel(t, memo) >= prag)]].forEach(([k, n, g]) => {
+    if (!g.length) return;
+    const gata = g.filter((t) => t.stare === 'terminat').length;
+    st.push({ k, n, stare: gata === g.length ? 'ok' : g.some((t) => PB_T.includes(t.stare) || slaInfo(t).stare === 'late') ? 'pb' : 'urm', ts: g, sub: gata + ' din ' + g.length, la: gata === g.length ? Math.max(...g.map((t) => t.terminat_la || 0)) : null });
   });
   st.push({ k: 'livrare', n: 'Trimisă clientului', stare: o.livrata_la ? 'ok' : 'urm', la: o.livrata_la, ts: [] });
-  /* prima etapă neterminată e cea curentă, chiar dacă pasul ei încă se deblochează */
+  /* un singur punct curent: prima etapă neterminată */
   const prima = st.findIndex((s) => s.stare !== 'ok');
   if (prima >= 0 && st[prima].stare === 'urm') st[prima].stare = 'cur';
   return st;
+}
+function fluxMini(oid) {
+  const st = fluxComanda(oid), c = st.find((s) => s.stare !== 'ok');
+  return '<span class="mini">' + st.map((s) => '<i class="' + s.stare + '"></i>').join('') + '</span> <span class="small">' + esc(c ? c.n : 'Gata') + (c && c.sub && c.ts.length ? ' · ' + esc(c.sub) : '') + '</span>';
 }
 const ICON = { ok: '✓', cur: '●', pb: '!', urm: '' };
 function fluxHtml(oid, opt) {
   opt = opt || {}; const st = fluxComanda(oid);
   const aici = opt.task ? st.findIndex((s) => s.ts.some((t) => t.id === opt.task)) : -1;
   const cur = st.findIndex((s) => s.stare === 'cur' || s.stare === 'pb');
-  const ales = UI.fluxSt && UI.fluxSt.o === oid && st[UI.fluxSt.i] ? UI.fluxSt.i : aici >= 0 ? aici : cur;
+  const apasat = UI.fluxSt && UI.fluxSt.o === oid && st[UI.fluxSt.i];
+  const ales = apasat ? UI.fluxSt.i : aici >= 0 ? aici : cur;
   const bare = st.map((s, i) => '<li class="' + s.stare + (i === ales ? ' sel' : '') + (i === aici ? ' aici' : '') + '" data-a="fluxst" data-id="' + oid + '|' + i + '"><b>' + (ICON[s.stare] || i + 1) + '</b><span>' + esc(s.n) + '</span><small>' + (i === aici ? 'aici ești' : s.la ? hhmm(s.la) : s.sub ? esc(s.sub) : '') + '</small></li>').join('');
   const s = st[ales]; let det = '';
-  if (s) {
-    const rand = (t) => '<li><span class="p1">' + esc(t.n) + ' ' + tipChip(t) + '</span><span class="p2">' + (opt.spec ? chip(t.stare) : (t.specialist ? esc(spName(t.specialist)) : t.spec === 'motor' ? 'automat' : esc(SPEC[t.spec])) + ' ' + chip(t.stare) + ' ' + termen(t) + (t.spec !== 'motor' && t.stare !== 'terminat' && t.stare !== 'asteptare' ? ' ' + btn('oppas', 'Lucrează', { id: t.id, c: 'mic pri' }) : t.spec !== 'motor' && t.stare === 'terminat' ? ' ' + btn('oppas', 'Vezi', { id: t.id, c: 'mic' }) : '')) + '</span></li>';
-    const auto = s.ts.filter((t) => t.spec === 'motor'), om = umane(s.ts).sort((a, b) => ACTIVE_T.indexOf(b.stare) - ACTIVE_T.indexOf(a.stare));
-    det = (om.length ? '<ul class="awbd">' + om.map(rand).join('') + '</ul>' : '') + (auto.length ? '<p class="small mut">Automate: ' + auto.filter((t) => t.stare === 'terminat').length + ' din ' + auto.length + ' gata.</p>' : '') + (!s.ts.length ? '<p class="small mut">' + (s.k === 'plata' ? (platita(D('comenzi')[oid]) ? 'Plata e confirmată.' : 'Se așteaptă plata clientului.') : s.k === 'preluare' ? (preluata(D('comenzi')[oid]) ? 'Comanda e preluată' + (s.sub ? ' de ' + esc(s.sub) : '') + '.' : 'Nimeni nu a preluat încă această comandă.') : D('comenzi')[oid].livrata_la ? 'Documentele au ajuns la client.' : 'Se trimite după ultimul pas.') + '</p>' : '');
+  /* în pagina pasului, restul pașilor apar doar dacă apeși o etapă */
+  if (s && (apasat || aici < 0)) {
+    const rand = (t) => '<li><span class="p1">' + esc(t.n) + '</span><span class="p2">' + (opt.spec ? chip(t.stare) : (t.specialist ? esc(spName(t.specialist)) : t.spec === 'motor' ? 'automat' : esc(SPEC[t.spec])) + ' ' + chip(t.stare) + ' ' + termen(t) + (t.spec !== 'motor' && t.stare !== 'terminat' && t.stare !== 'asteptare' ? ' ' + btn('oppas', 'Lucrează', { id: t.id, c: 'mic pri' }) : t.spec !== 'motor' && t.stare === 'terminat' ? ' ' + btn('oppas', 'Vezi', { id: t.id, c: 'mic' }) : '')) + '</span></li>';
+    const auto = orderTasks(oid).filter((t) => t.spec === 'motor' && t.stare !== 'anulat'), om = umane(s.ts).sort((a, b) => ACTIVE_T.indexOf(b.stare) - ACTIVE_T.indexOf(a.stare));
+    det = (om.length ? '<ul class="awbd">' + om.map(rand).join('') + '</ul>' : '') + (auto.length && !opt.spec ? '<p class="small mut">Pași automați: ' + auto.filter((t) => t.stare === 'terminat').length + ' din ' + auto.length + ' gata.</p>' : '') + (!s.ts.length ? '<p class="small mut">' + (s.k === 'plata' ? (platita(D('comenzi')[oid]) ? 'Plata e confirmată.' : 'Se așteaptă plata clientului.') : s.k === 'preluare' ? (preluata(D('comenzi')[oid]) ? 'Comanda e preluată' + (s.sub ? ' de ' + esc(s.sub) : '') + '.' : 'Nimeni nu a preluat încă această comandă.') : D('comenzi')[oid].livrata_la ? 'Documentele au ajuns la client.' : 'Se trimite după ultimul pas.') + '</p>' : '');
   }
   return '<div class="awbw"><ol class="awb">' + bare + '</ol>' + det + '</div>';
 }

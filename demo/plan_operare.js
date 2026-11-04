@@ -24,7 +24,7 @@ const PLAN_OPERARE = {
     { t: 'Flux vizibil', d: 'Ca la urmărirea unui colet: tot drumul și punctul curent.', items: [
       { id: 'fx1', tip: 'bifa', ok: true, t: 'Fluxul pe pagina comenzii, cu etape, date și etapa curentă' },
       { id: 'fx2', tip: 'bifa', ok: true, t: 'Fluxul la specialist, cu „aici ești”, fără numele altora' },
-      { id: 'fx3', tip: 'bifa', ok: true, t: 'Raportul cu 35 de pași se vede în câteva etape; cei automați se adună' },
+      { id: 'fx3', tip: 'bifa', ok: true, t: 'Aceleași etape pentru orice comandă: Plătită, Preluată, La specialiști, Verificare, Document final, Trimisă; pașii sunt detaliul etapei' },
       { id: 'fx4', tip: 'bifa', ok: true, t: 'Același flux pe capitolele acestui plan' },
       { id: 'fx5', tip: 'bifa', ok: true, t: 'Fluxul pentru client pe site: Plătită, Preluată, În lucru cu numărul de pași, Livrată', d: 'De verificat pe prima comandă reală. Pagina publică de test nu e încă republicată.' }
     ] },
