@@ -146,3 +146,5 @@ details.card summary{cursor:pointer;font-weight:600}.top .brand span{display:blo
 .vwp{background:var(--soft);border-radius:6px;padding:8px 10px;margin-bottom:10px}.vwp.war{background:var(--warn-soft);color:var(--warn)}
 #ocrp{position:fixed;right:14px;bottom:14px;z-index:80;background:var(--band);color:#fff;border-radius:20px;padding:7px 14px;font-size:13px;cursor:pointer}
 @media (max-width:700px){.awb{flex-direction:column;overflow:visible}.awb li{flex-direction:row;text-align:left;gap:10px;padding:5px 6px;min-width:0}.awb li:not(:last-child)::after{left:19px;right:auto;top:33px;bottom:-5px;width:2px;height:auto}.awb small{margin-left:auto}.vwb{flex-direction:column}.vwt{border-left:0;border-top:1px solid var(--line)}}
+.side a.nmai{color:var(--muted)}
+@media(max-width:800px){.top{gap:8px}.top .brand span{display:none}.brand b{font-size:14px}.rol{font-size:0;margin-left:auto}.rol select{font-size:13px}.side a{flex:1 1 30%;padding:8px 6px}}

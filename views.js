@@ -5,18 +5,21 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': 
 const $ = (s, r) => (r || document).querySelector(s);
 const ROLES = { admin: 'Admin', operator: 'Operator', tehnic: 'Tehnic', sales: 'Sales', plati: 'Plăți', specialist: 'Specialist', client: 'Client' };
 const NAV = {
-  operator: [['azi', 'De lucrat'], ['comenzi', 'Comenzi'], ['cereri', 'Întrebări și cereri'], ['probleme', 'Probleme']],
-  admin: [['-', 'Operare'], ['azi', 'De lucrat'], ['panou', 'Panou'], ['comenzi', 'Comenzi'], ['cereri', 'Întrebări și cereri'], ['probleme', 'Probleme'], ['servicii', 'Servicii'], ['dosare', 'Dosare specialiști'], ['-', 'Oameni'], ['specialisti', 'Specialiști'], ['conturi', 'Conturi'], ['juridic', 'Contracte'], ['-', 'Bani'], ['plati', 'Plăți și decont'], ['-', 'Date și proiect'], ['planop', 'Plan operare'], ['plan', 'Plan de execuție'], ['date', 'Date (colecția CF)'], ['riscuri', 'Riscuri'], ['tinte', 'Ținte'], ['arhitectura', 'Arhitectură'], ['setari', 'Setări']],
+  operator: [['azi', 'De lucrat'], ['comenzi', 'Comenzi'], ['cereri', 'Întrebări'], ['probleme', 'Probleme']],
+  admin: [['-', 'Operare'], ['azi', 'De lucrat'], ['panou', 'Panou'], ['comenzi', 'Comenzi'], ['cereri', 'Întrebări'], ['probleme', 'Probleme'], ['servicii', 'Servicii'], ['dosare', 'Dosare specialiști'], ['-', 'Oameni'], ['specialisti', 'Specialiști'], ['conturi', 'Conturi'], ['juridic', 'Contracte'], ['-', 'Bani'], ['plati', 'Plăți și decont'], ['-', 'Date și proiect'], ['planop', 'Plan operare'], ['plan', 'Plan de execuție'], ['date', 'Date (colecția CF)'], ['riscuri', 'Riscuri'], ['tinte', 'Ținte'], ['arhitectura', 'Arhitectură'], ['setari', 'Setări']],
   tehnic: [['plan', 'Plan de execuție'], ['dosare', 'Dosare specialiști'], ['probleme', 'Probleme'], ['motor', 'Taskuri automate'], ['surse', 'Surse de date']],
   sales: [['comenzi', 'Comenzi'], ['cosuri', 'Coșuri abandonate'], ['oferte', 'Cereri de ofertă'], ['clienti', 'Clienți']],
   plati: [['plati', 'Plăți'], ['decont', 'Decont specialiști']],
   specialist: [['disp', 'Disponibile'], ['mele', 'Ale mele'], ['term', 'Terminate'], ['dosare', 'Dosare de pregătit'], ['acte', 'Contracte'], ['contoare', 'Contoarele mele']],
   client: [['pagina', 'Comanda mea']]
 };
+/* pe primul nivel; restul stau sub „Mai mult” (nu dispare nimic) */
+const NAV_PRINCIPAL = { admin: ['azi', 'comenzi', 'cereri', 'probleme', 'specialisti'], specialist: ['disp', 'mele', 'term'] };
 let UI = { role: 'admin', view: 'panou', spec: 'sp_ion', client: 'EP-10001', f: {}, sel: null };
 try { const s = sessionStorage.getItem('epay_ui'); if (s) UI = Object.assign(UI, JSON.parse(s)); } catch (e) { /* fără sessionStorage */ }
 const saveUI = () => { try { sessionStorage.setItem('epay_ui', JSON.stringify(UI)); } catch (e) { /* ignor */ } };
 let MODAL = null, TOAST = '';
+const SITE_URL = 'https://euclide119.github.io/epay-cf-test/';
 const firstView = (rol) => NAV[rol].find((n) => n[0] !== '-')[0];
 
 /* ---------- componente ---------- */
@@ -81,9 +84,13 @@ function renderApp() {
     : UI.role === 'client' ? '<select data-i="client">' + L('comenzi').sort((a, b) => a.nr.localeCompare(b.nr)).map((o) => '<option value="' + o.nr + '"' + (o.nr === UI.client ? ' selected' : '') + '>' + o.nr + ' · ' + esc(clName(o)) + '</option>').join('') + '</select>' : '';
   const active = (n) => n[0] === UI.view || (['detaliu', 'pas'].includes(UI.view) && n[0] === 'comenzi') || (UI.view === 'spdet' && n[0] === 'specialisti') || (UI.view === 'task' && n[0] === 'mele');
   const nPb = L('probleme', (p) => p.stare !== 'rezolvata').length; const nOf = UI.role === 'specialist' ? L('oferte', (x) => x.spec === UI.spec && x.raspuns === 'deschisa').length : 0;
+  const bd = (n) => n[0] === 'probleme' ? nPb : n[0] === 'cereri' ? intrebariDeschise().length : n[0] === 'azi' ? coada().length : n[0] === 'disp' ? nOf : n[0] === 'acte' && UI.role === 'specialist' ? L('acte', (a) => a.dest_spec === UI.spec && a.stare === 'la_semnat').length : 0;
+  const prim = NAV_PRINCIPAL[UI.role];
+  const vizibil = (n) => !prim || UI.maiMult || (n[0] !== '-' && (prim.includes(n[0]) || active(n) || bd(n) > 0));
+  const siteLink = '<a href="' + SITE_URL + '" target="_blank" rel="noopener">Site ↗</a>';
   app.innerHTML = '<header class="top"><div class="brand"><b>Platforma de operare</b><span>' + esc(UI.auth.nume) + (SYNC.on ? ' · sincronizat' : ' · demo') + '</span></div>' +
-    (canSwitch ? '<label class="rol">Interfața <select data-i="role">' + opts(ROLES, UI.role) + '</select></label>' + (!isAdmin && UI.role === 'admin' ? '<span class="small" title="Vezi interfața de admin; modifici cu drepturile de tehnic (fără conturi și roluri)">doar vizualizare conturi</span>' : '') : '') + sub + (UI.role !== 'client' && UI.role !== 'specialist' ? '<a class="b mic site" href="https://euclide119.github.io/epay-cf-test/" target="_blank" rel="noopener">Site ↗</a>' : '') + '<button class="b mic iesi" data-a="logout">Ieși</button></header>' +
-    '<div class="body"><nav class="side">' + nav.map((n) => n[0] === '-' ? '<span class="nsec">' + n[1] + '</span>' : '<a href="#" data-a="nav" data-id="' + n[0] + '" class="' + (active(n) ? 'on' : '') + '">' + n[1] + (n[0] === 'probleme' && nPb ? ' <i>' + nPb + '</i>' : '') + (n[0] === 'cereri' && intrebariDeschise().length ? ' <i>' + intrebariDeschise().length + '</i>' : '') + (n[0] === 'azi' && coada().length ? ' <i>' + coada().length + '</i>' : '') + (n[0] === 'disp' && nOf ? ' <i>' + nOf + '</i>' : '') + (n[0] === 'acte' && UI.role === 'specialist' && L('acte', (a) => a.dest_spec === UI.spec && a.stare === 'la_semnat').length ? ' <i>' + L('acte', (a) => a.dest_spec === UI.spec && a.stare === 'la_semnat').length + '</i>' : '') + '</a>').join('') + '</nav><main class="main" id="main">' + view() + '</main></div>' +
+    (canSwitch ? '<label class="rol">Interfața <select data-i="role">' + opts(ROLES, UI.role) + '</select></label>' + (!isAdmin && UI.role === 'admin' ? '<span class="small" title="Vezi interfața de admin; modifici cu drepturile de tehnic (fără conturi și roluri)">doar vizualizare conturi</span>' : '') : '') + sub + (UI.role !== 'client' && UI.role !== 'specialist' && !prim ? '<a class="b mic site" href="' + SITE_URL + '" target="_blank" rel="noopener">Site ↗</a>' : '') + '<button class="b mic iesi" data-a="logout">Ieși</button></header>' +
+    '<div class="body"><nav class="side">' + nav.filter(vizibil).map((n) => n[0] === '-' ? '<span class="nsec">' + n[1] + '</span>' : '<a href="#" data-a="nav" data-id="' + n[0] + '" class="' + (active(n) ? 'on' : '') + '">' + n[1] + (bd(n) ? ' <i>' + bd(n) + '</i>' : '') + '</a>').join('') + (prim ? '<a href="#" class="nmai" data-a="maimult">' + (UI.maiMult ? 'Mai puțin' : 'Mai mult') + '</a>' + (UI.maiMult && UI.role !== 'specialist' ? siteLink : '') : '') + '</nav><main class="main" id="main">' + view() + '</main></div>' +
     (MODAL ? '<div class="ov" data-a="mclose"><div class="md"><div class="mh"><h3>' + MODAL.title + '</h3>' + btn('mclose', '✕', { c: 'mic' }) + '</div><div class="mb">' + MODAL.html + '</div></div></div>' : '') +
     (TOAST ? '<div id="toast" class="toast">' + esc(TOAST) + '</div>' : '');
   if (UI.role === 'specialist' && UI.knownOffers == null) UI.knownOffers = L('oferte', (x) => x.spec === UI.spec && x.raspuns === 'deschisa').map((x) => x.id);

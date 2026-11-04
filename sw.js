@@ -1,6 +1,6 @@
 /* Service worker: aplicația pornește și fără semnal (fișierele aplicației din cache); datele vin din rețea. */
-const CACHE = 'dd-operare-20261104b';
-const SHELL = ['./', './index.html', './styles.css?v=20261104b', './data.js?v=20261019u', './engine.js?v=20261104b', './prelucrare.js?v=20261019u', './contracte.js?v=20261019u', './acte.js?v=20261019u', './sync.js?v=20261104b', './views.js?v=20261104b', './app.js?v=20261104b', './dosare.js?v=20261023a', './plan_operare.js?v=20261104b', './operator.js?v=20261104b', './cititor.js?v=20261104b', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
+const CACHE = 'dd-operare-20261104c';
+const SHELL = ['./', './index.html', './styles.css?v=20261104c', './data.js?v=20261019u', './engine.js?v=20261104c', './prelucrare.js?v=20261019u', './contracte.js?v=20261019u', './acte.js?v=20261019u', './sync.js?v=20261104c', './views.js?v=20261104c', './app.js?v=20261104c', './dosare.js?v=20261023a', './plan_operare.js?v=20261104c', './operator.js?v=20261104c', './cititor.js?v=20261104c', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', (e) => {

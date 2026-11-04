@@ -47,6 +47,7 @@ const A = {
   contdebloc: async (d) => { try { await fnConturi({ actiune: 'deblocheaza', id: d.id }); UI.conturi = (await fnConturi({ actiune: 'lista' })).conturi; } catch (e) { toast(e.message); } },
   contreset: async (d) => { try { await fnConturi({ actiune: 'reset', email: d.id, redirect: REDIRECT() }); toast('Email de resetare trimis.'); } catch (e) { toast(e.message); } },
   demolist: () => { UI.demoList = true; },
+  maimult: () => { UI.maiMult = !UI.maiMult; },
   demolog: (d) => { if (d.id === 'specialist') { const s = SPECIALISTI_SEED.find((x) => x.id === d.x); UI.auth = { rol: 'specialist', sid: s.id, nume: s.nume }; UI.view = 'disp'; } else if (d.id === 'client') { UI.auth = { rol: 'client', nume: 'Client (previzualizare)' }; UI.view = 'pagina'; } else { const c = DEMO_CONTURI.find((x) => x[0] === d.id); UI.auth = { rol: d.id, nume: c[2] }; UI.view = firstView(d.id); } UI.role = UI.auth.rol; UI.knownOffers = null; UI.alert = ''; },
   logout: async () => { UI.auth = null; UI.demoList = false; UI.alert = ''; MODAL = null; if (SYNC.on) await syncLogout(); },
   notifon: () => { if (typeof Notification !== 'undefined') Notification.requestPermission().then(() => renderApp()); },
@@ -253,9 +254,7 @@ document.addEventListener('submit', async (e) => {
     renderApp(); return;
   }
   if (f.dataset.f !== 'login') return; e.preventDefault();
-  UI.demoErr = !(f.email.value.trim().toLowerCase() === 'admin' && f.pass.value === '1234');
-  if (!UI.demoErr) { UI.demoList = true; UI.auth = { rol: 'admin', nume: 'Manu' }; UI.role = 'admin'; UI.view = firstView('admin'); UI.knownOffers = null; tick(); saveUI(); }
-  renderApp();
+  try { SYNC.err = ''; await syncLogin(f.email.value.trim(), f.pass.value); authFromSync(); UI.role = UI.auth.rol; UI.view = firstView(UI.role); UI.knownOffers = null; tick(); saveUI(); renderApp(); } catch (err) { SYNC.err = err.message; renderApp(); }
 });
 window.addEventListener('DOMContentLoaded', async () => {
   const INVITE = /type=(invite|recovery)/.test(location.hash + location.search);
@@ -266,5 +265,6 @@ window.addEventListener('DOMContentLoaded', async () => {
   R.listen(() => { watchOffers(); if (typingNow()) return; renderApp(); });
   if (location.hash.startsWith('#/client/')) { UI.auth = UI.auth || { rol: 'client', nume: 'Client' }; UI.role = 'client'; UI.client = decodeURIComponent(location.hash.slice(9)); UI.view = 'pagina'; }
   if ('serviceWorker' in navigator && location.protocol !== 'file:') void 0;
+  if (!UI.auth) { UI.auth = { rol: 'admin', nume: 'Manu' }; UI.role = 'admin'; UI.view = firstView('admin'); }
   watchOffers(); renderApp();
 });
