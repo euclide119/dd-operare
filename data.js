@@ -181,7 +181,8 @@ const DEFAULT_SETTINGS = {
   taxaAncpiMedie: 20, /* lei, pentru marja pe comandă [E] */
   retragereZile: 14,
   okAdmin: true, /* pașii pornesc după verificarea și preluarea comenzii de către administrator */
-  trimitereManuala: true /* documentele pleacă la client când apasă administratorul, nu singure */
+  trimitereManuala: true, /* documentele pleacă la client când apasă administratorul, nu singure */
+  linkUrmarire: 'https://euclide119.github.io/epay-cf-test/?urmarire={nr}#status' /* pagina de urmărire din mesajele către client; se schimbă la domeniul propriu */
 };
 
 /* ---- șabloane notificări (email + WhatsApp) ---- */
