@@ -10,7 +10,7 @@ const inchisa = (o) => ['livrata', 'inchisa', 'anulata'].includes(o.stare);
 const platita = (o) => !!o.plata_la;
 const umane = (ts) => ts.filter((t) => t.spec !== 'motor');
 const pornita = (oid) => umane(orderTasks(oid)).some((t) => t.specialist || t.stare === 'terminat');
-const preluata = (o) => !!o.preluata_la || pornita(o.id);
+const preluata = (o) => !!o.preluata_la || ['livrata', 'inchisa'].includes(o.stare);
 const nepreluata = (o) => platita(o) && !inchisa(o) && !preluata(o);
 const areProblema = (oid) => orderTasks(oid).some((t) => PB_T.includes(t.stare) || slaInfo(t).stare === 'late') || L('probleme', (p) => p.comanda === oid && p.stare !== 'rezolvata').length > 0;
 /* întrebările venite de pe site sunt rânduri proprii, ca să nu se piardă când alt dispozitiv salvează lista de mesaje */
@@ -80,6 +80,7 @@ function pasulUrmator(o) {
   if (!platita(o)) return { txt: 'Se așteaptă plata clientului.' };
   if (o.stare === 'inchisa') return { txt: 'Comanda e închisă.' };
   if (o.stare === 'livrata') return { txt: 'Livrată clientului.', a: 'inchide', id: o.id, lbl: 'Închide comanda' };
+  if (o.gata_la && !o.livrata_la) return { txt: 'Toți pașii sunt gata. Verifică documentele și trimite.', a: 'optrimite', id: o.id, lbl: 'Trimite clientului' };
   if (!preluata(o)) return { txt: 'Comandă nouă. Vezi ce se cere și preia-o.', a: 'oppreia', id: o.id, lbl: 'Preiau comanda' };
   const ts = umane(orderTasks(o.id)); const pb = ts.find((t) => PB_T.includes(t.stare));
   if (pb) return { txt: 'Are nevoie de tine: ' + pb.n + ' (' + (TXT[pb.stare] || pb.stare) + ')', a: 'oppas', id: pb.id, lbl: 'Rezolv', rosu: true };
@@ -100,6 +101,7 @@ function coada() {
   L('taskuri', (t) => slaInfo(t).stare === 'late').forEach((t) => add(2, 'rosu', t.n + ': termen depășit', nr(t.comanda) + ' · ' + spName(t.specialist), 'oppas', t.id, 'Deschid'));
   intrebariDeschise().forEach((m) => add(3, 'galben', 'Întrebare: ' + m.text.slice(0, 70), nr(m.comanda) + ' · ' + hhmm(m.la), 'nav', 'cereri', 'Răspund'));
   L('comenzi', nepreluata).sort((a, b) => a.plata_la - b.plata_la).forEach((o) => add(4, 'galben', 'Comandă nouă: ' + L('linii', (l) => l.comanda === o.id && !l.incl && l.stare !== 'anulat').map((l) => svName(l.svc)).join(', '), o.nr + ' · plătită ' + hhmm(o.plata_la), 'oppreia', o.id, 'Preiau'));
+  L('comenzi', (o) => o.gata_la && !o.livrata_la && o.stare !== 'anulata').forEach((o) => add(4, 'galben', 'Completă: de verificat și trimis', o.nr, 'open', o.id, 'Deschid'));
   L('linii', (l) => l.stare === 'cerere').forEach((l) => add(5, '', 'De cotat: ' + svName(l.svc), nr(l.comanda), 'open', l.comanda, 'Deschid'));
   L('taskuri', (t) => t.spec === 'analist' && ['disponibil', 'oferit', 'atribuit'].includes(t.stare)).forEach((t) => add(6, '', t.n, nr(t.comanda) + ' · ' + TIP_PAS[tipPas(t)][0].toLowerCase(), 'oppas', t.id, 'Lucrez'));
   L('taskuri', (t) => slaInfo(t).stare === 'warn').forEach((t) => add(7, '', t.n + ': aproape de termen', nr(t.comanda) + ' · ' + spName(t.specialist), 'oppas', t.id, 'Deschid'));
@@ -212,6 +214,7 @@ Object.assign(A, {
   oppreia: (d) => { const o = D('comenzi')[d.id]; o.preluata_la = now(); o.preluata_de = (UI.auth || {}).nume || 'operator'; ev('comanda.preluata', 'operator', { k: 'comanda', id: o.id }, {}); UI.view = 'detaliu'; UI.sel = o.id; UI.fluxSt = null; },
   opcopie: async (d) => { const t = D('taskuri')[d.id]; try { await navigator.clipboard.writeText(copieCerere(t)); toast('Cererea e copiată. O poți lipi în mesaj.'); } catch (e) { openModal('Cererea pentru specialist', '<textarea rows="9" style="width:100%">' + esc(copieCerere(t)) + '</textarea>'); } },
   opfin: (d) => finPas(d.id),
+  optrimite: (d) => { if (trimiteClient(d.id, (UI.auth || {}).nume)) toast('Comanda a plecat la client.'); },
   opf: (d) => { UI.view = 'comenzi'; UI.sel = null; UI.f.c = d.id === 'neplatite' ? { plata: 'neplatita' } : d.id === 'livrate' ? { etapa: 'livrata' } : { semn: d.id }; },
   opfr: () => { UI.f.c = {}; },
   oprsp: (d) => { const txt = ((UI.rsp || {})[d.id] || '').trim(); if (!txt) { toast('Scrie răspunsul.'); return; } R.db.mesaje.push({ comanda: d.id, de: 'echipă', text: txt, la: now() }); const o = D('comenzi')[d.id]; const n = { id: uid('nt'), dest: 'client', comanda: d.id, canal: 'email', sablon: 'manual', subj: 'Mesaj de la echipă (' + o.nr + ')', body: txt, la: now(), stare: o.din_site ? 'de trimis' : 'trimis (simulat)', eroare: '' }; D('notificari')[n.id] = n; UI.rsp[d.id] = ''; toast(o.din_site ? 'Răspunsul pleacă pe e-mail în maximum un minut.' : 'Răspuns salvat (comandă de test).'); },

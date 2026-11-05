@@ -17,7 +17,9 @@ const laMine = (t) => { const s = D('specialisti')[t.specialist]; return !!s && 
 const verificata = (o) => !!o.preluata_la || ['livrata', 'inchisa'].includes(o.stare);
 const servicii = (o) => L('linii', (l) => l.comanda === o.id && !l.incl && l.stare !== 'anulat').map((l) => svName(l.svc)).join(', ');
 const imobil = (o) => imoText(D('imobile')[o.imobile[0]] || {});
-const oferitLui = (t) => (L('oferte', (x) => x.task === t.id && x.raspuns === 'deschisa')[0] || {}).spec;
+const vad = (t) => L('oferte', (x) => x.task === t.id && x.raspuns === 'deschisa').length;
+const bursa = (t) => (vad(t) === 1 ? 'îl vede 1 specialist' : 'îl văd ' + vad(t) + ' specialiști') + '; îl ia primul care acceptă';
+const deTrimis = (o) => [].concat(...L('linii', (l) => l.comanda === o.id && l.stare === 'livrat').map((l) => l.de_trimis || [])).filter((id, i, a) => a.indexOf(id) === i).map((id) => D('documente')[id]).filter(Boolean).concat(L('documente', (d) => d.comanda === o.id && d.atasat));
 const inLucru = (t) => ['disponibil', 'oferit', 'atribuit'].includes(t.stare);
 
 /* ---------- drumul comenzii: aceleași cinci trepte, mereu ---------- */
@@ -32,8 +34,8 @@ function etape(o) {
     { k: 'plata', n: 'Plată', st: p ? 'ok' : 'act', sub: p ? hhmm(o.plata_la) : 'se așteaptă' },
     { k: 'preluare', n: 'Preluare', st: v ? 'ok' : p ? 'act' : 'urm', sub: v ? (o.preluata_de || '') : '' },
     { k: 'spec', n: 'Specialist', st: grup(ex, v ? 'ok' : 'urm'), sub: ex.length ? gata(ex) + ' din ' + ex.length : 'nu e nevoie' },
-    { k: 'raport', n: 'Raport', st: grup(inn, o.livrata_la ? 'ok' : 'urm'), sub: inn.length ? gata(inn) + ' din ' + inn.length : '' },
-    { k: 'client', n: 'Client', st: o.livrata_la ? 'ok' : 'urm', sub: o.livrata_la ? hhmm(o.livrata_la) : '' }
+    { k: 'raport', n: 'Raport', st: grup(inn, o.livrata_la || o.gata_la ? 'ok' : 'urm'), sub: inn.length ? gata(inn) + ' din ' + inn.length : '' },
+    { k: 'client', n: 'Client', st: o.livrata_la ? 'ok' : o.gata_la ? 'act' : 'urm', sub: o.livrata_la ? hhmm(o.livrata_la) : o.gata_la ? 'de trimis' : '' }
   ];
   if (!e.some((x) => x.st === 'act' || x.st === 'pb')) { const i = e.findIndex((x) => x.st !== 'ok'); if (i >= 0) e[i].st = 'act'; }
   return e;
@@ -53,6 +55,7 @@ function urmeaza(o) {
   if (!platita(o)) return { txt: 'Se așteaptă plata clientului.', sub: 'Nu ai nimic de făcut până când plata e confirmată.' };
   if (o.stare === 'inchisa') return { txt: 'Comanda e închisă.' };
   if (o.stare === 'livrata') return { txt: 'Trimisă clientului, ' + hhmm(o.livrata_la) + '.', a: 'inchide', id: o.id, lbl: 'Închide comanda', sec: true };
+  if (o.gata_la) return { txt: 'Toți pașii sunt gata. Verifică documentele și trimite.', a: 'strimitecl', id: o.id, lbl: 'Trimite clientului', trimite: true };
   if (!verificata(o)) return { txt: 'Verifică plata și comanda, apoi preia.', a: 'spreia', id: o.id, lbl: 'Totul e în regulă, preiau' };
   const ts = vii(o.id).filter((t) => t.spec !== 'motor');
   const pb = ts.find((t) => PB_T.includes(t.stare));
@@ -62,13 +65,15 @@ function urmeaza(o) {
   const lib = ts.find((t) => extern(t) && t.stare === 'disponibil');
   if (lib) return { txt: '„' + lib.n + '” nu are încă specialist.', a: 'st', id: lib.id, lbl: 'Trimite la specialist' };
   const sp = ts.find((t) => extern(t) && ['oferit', 'atribuit'].includes(t.stare));
-  if (sp) return { txt: 'La specialist: ' + sp.n, sub: sp.stare === 'atribuit' ? spName(sp.specialist) + ' lucrează din ' + hhmm(sp.acceptat_la) : 'Așteaptă să accepte ' + spName(oferitLui(sp)), a: 'st', id: sp.id, lbl: 'Vezi pasul', sec: true };
+  if (sp) return { txt: 'La specialist: ' + sp.n, sub: sp.stare === 'atribuit' ? spName(sp.specialist) + ' lucrează din ' + hhmm(sp.acceptat_la) : 'La bursă: ' + bursa(sp), a: 'st', id: sp.id, lbl: 'Vezi pasul', sec: true };
   return { txt: 'Pașii automați rulează.', sub: 'Nu ai nimic de făcut acum.' };
 }
 function randulTau() {
   const q = [], nr = (oid) => (D('comenzi')[oid] || {}).nr || '';
   L('taskuri', (t) => t.spec !== 'motor' && PB_T.includes(t.stare)).forEach((t) => q.push({ p: 1, c: 'rosu', et: 'Problemă', ce: t.n, sub: nr(t.comanda) + ' · ' + (TXT[t.stare] || t.stare), a: 'st', id: t.id, lbl: 'Rezolvă' }));
   intrebariDeschise().forEach((m) => q.push({ p: 2, c: 'galben', et: 'Întrebare de la client', ce: m.text.slice(0, 80), sub: nr(m.comanda) + ' · ' + hhmm(m.la), a: 'so', id: m.comanda, lbl: 'Răspunde' }));
+  L('taskuri', (t) => extern(t) && t.stare === 'terminat' && !t.vazut_admin && !laMine(t) && D('comenzi')[t.comanda] && !D('comenzi')[t.comanda].livrata_la && now() - t.terminat_la < 86400000).forEach((t) => q.push({ p: 2.2, c: 'verde nou', et: 'Primit de la specialist', ce: t.n, sub: nr(t.comanda) + ' · ' + spName(t.specialist) + ', ' + hhmm(t.terminat_la), a: 'st', id: t.id, lbl: 'Vezi' }));
+  L('comenzi', (o) => o.gata_la && !o.livrata_la && o.stare !== 'anulata').forEach((o) => q.push({ p: 2.5, c: 'verde', et: 'Completă', ce: servicii(o), sub: o.nr + ' · gata ' + hhmm(o.gata_la), a: 'so', id: o.id, lbl: 'Verifică și trimite' }));
   L('comenzi', (o) => platita(o) && !verificata(o) && o.stare !== 'anulata').sort((a, b) => a.plata_la - b.plata_la).forEach((o) => q.push({ p: 3, c: 'galben', et: 'Comandă nouă', ce: servicii(o), sub: o.nr + ' · plătită ' + hhmm(o.plata_la), a: 'so', id: o.id, lbl: 'Verifică' }));
   /* pașii unei comenzi încă neverificate nu intră în listă: întâi se verifică și se preia comanda */
   const ver = (t) => { const o = D('comenzi')[t.comanda]; return !!o && verificata(o); };
@@ -108,7 +113,7 @@ function adminAzi() {
   const k = (f, n, l, c) => '<button class="kp ' + (c || '') + '" data-a="sfil" data-id="' + f + '"><b>' + n + '</b><span>' + l + '</span></button>';
   return '<h1>Azi</h1><div class="kps">' + k('noi', os.filter((o) => platita(o) && !verificata(o) && o.stare !== 'anulata').length, 'de verificat', 'galben') + k('lucru', os.filter((o) => platita(o) && verificata(o) && !inchisa(o)).length, 'în lucru') + k('pb', os.filter((o) => !inchisa(o) && areProblema(o.id)).length, 'probleme', 'rosu') + k('neplatite', os.filter((o) => !platita(o) && o.stare !== 'anulata').length, 'neplătite') + '</div>' +
     '<h2>Rândul tău <i>' + q.length + '</i></h2>' + (q.length ? q.map(rand).join('') : gol('Nimic de făcut acum.', 'Comenzile noi și pașii tăi apar aici.')) +
-    '<h2>La specialiști <i>' + sp.length + '</i></h2>' + (sp.length ? sp.map((t) => '<div class="rd lin" data-a="st" data-id="' + t.id + '"><div><small>' + esc((D('comenzi')[t.comanda] || {}).nr || '') + '</small><b>' + esc(t.n) + '</b><span>' + (t.stare === 'atribuit' ? esc(spName(t.specialist)) + ' · lucrează din ' + hhmm(t.acceptat_la) : 'așteaptă să accepte ' + esc(spName(oferitLui(t)))) + '</span></div><div class="dr">' + ceas(t) + termen(t) + '</div></div>').join('') : gol('Niciun pas la specialiști.'));
+    '<h2>La specialiști <i>' + sp.length + '</i></h2>' + (sp.length ? sp.map((t) => '<div class="rd lin" data-a="st" data-id="' + t.id + '"><div><small>' + esc((D('comenzi')[t.comanda] || {}).nr || '') + '</small><b>' + esc(t.n) + '</b><span>' + (t.stare === 'atribuit' ? esc(spName(t.specialist)) + ' · lucrează din ' + hhmm(t.acceptat_la) : 'la bursă · ' + bursa(t)) + '</span></div><div class="dr">' + ceas(t) + termen(t) + '</div></div>').join('') : gol('Niciun pas la specialiști.'));
 }
 const FILTRE = [['toate', 'Toate'], ['noi', 'De verificat'], ['lucru', 'În lucru'], ['pb', 'Probleme'], ['neplatite', 'Neplătite'], ['trimise', 'Trimise']];
 function adminComenzi() {
@@ -131,6 +136,14 @@ function verificare(o) {
     r(!!servicii(o), 'Ce se cere', esc(servicii(o)) || 'niciun serviciu') +
     r(!!cl.email, 'Client', esc(cl.nume || '') + (cl.email ? ' · ' + esc(cl.email) : ' · fără e-mail')) + '</ul>';
 }
+const LISTA = ['cf', 'expl', 'plan', 'ident', 'cf360', 'cfc', 'orto', 'indic', 'zona', 'util', 'est', 'regul', 'cu', 'depcu', 'rAp', 'rInt'];
+function comandat(o) {
+  const by = {}; L('linii', (l) => l.comanda === o.id && l.stare !== 'anulat').forEach((l) => (by[l.svc] = l));
+  const chei = Object.keys(by), toate = LISTA.filter((k) => by[k]).concat(chei.filter((k) => !LISTA.includes(k)), LISTA.filter((k) => !by[k]));
+  const el = (k) => { const l = by[k], st = !l ? 'nu' : l.stare === 'livrat' ? 'ok' : l.stare === 'cerere' ? 'cer' : 'luc'; return '<span class="el ' + st + '">' + (st === 'ok' ? '✓ ' : '') + esc(svName(k)) + (l && l.incl ? ' · inclus' : '') + (st === 'cer' ? ' · la ofertă' : '') + '</span>'; };
+  return '<div class="cmd"><div class="cmdh"><b>Ce s-a comandat</b><span>' + chei.filter((k) => by[k].stare === 'livrat').length + ' din ' + chei.length + ' gata</span></div><div class="els">' + toate.map(el).join('') + '</div><div class="leg"><i class="ok"></i>gata<i class="luc"></i>comandat, în lucru<i class="nu"></i>necomandat</div></div>';
+}
+const btnAtas = (o) => '<label class="b">Adaugă raportul (PDF)<input type="file" hidden accept="application/pdf,image/*" data-s="rap" data-id="' + o.id + '"></label>';
 function areCF(o) { return L('linii', (l) => l.comanda === o.id && l.stare !== 'anulat' && ['cf', 'ident', 'rAp', 'rInt'].includes(l.svc)).length > 0; }
 function areExplicatie(o) { return L('linii', (l) => l.comanda === o.id && l.stare !== 'anulat' && l.svc === 'expl').length > 0; }
 function adaugaExplicatie(oid) {
@@ -144,13 +157,13 @@ function adminComanda(o) {
   const pas = (t) => '<div class="ps" data-a="st" data-id="' + t.id + '"><div><b>' + esc(t.n) + '</b><span>' + (extern(t) ? esc(t.specialist ? spName(t.specialist) : SPEC[t.spec]) : 'tu') + '</span></div><div class="dr">' + termen(t) + chip(t.stare) + '</div></div>';
   const msg = toateMesajele().filter((m) => m.comanda === o.id);
   const u = urmeaza(o);
-  return '<a class="inap" href="#" data-a="sback">‹ Comenzi</a><div class="tit"><h1>' + o.nr + '</h1>' + (o.urgent ? tag('urgent', 'rosu') : '') + '</div><p class="sub"><b>' + esc(servicii(o)) + '</b><br>' + imobil(o) + ' · ' + esc(clName(o)) + '</p>' + trepte(o) +
-    (u.a === 'spreia' ? '<div class="acum"><small>Acum</small><b>' + esc(u.txt) + '</b>' + verificare(o) + sBtn('spreia', u.lbl, o.id, 'pri mare') + sBtn('scrie', 'Ceva nu e în regulă: scriu clientului', o.id, 'mare lnk') + '</div>' : acum(u)) +
+  return '<a class="inap" href="#" data-a="sback">‹ Comenzi</a><div class="tit"><h1>' + o.nr + '</h1>' + (o.urgent ? tag('urgent', 'rosu') : '') + '</div><p class="sub">' + imobil(o) + ' · ' + esc(clName(o)) + '</p>' + trepte(o) + comandat(o) +
+    (u.a === 'spreia' ? '<div class="acum"><small>Acum</small><b>' + esc(u.txt) + '</b>' + verificare(o) + sBtn('spreia', u.lbl, o.id, 'pri mare') + sBtn('scrie', 'Ceva nu e în regulă: scriu clientului', o.id, 'mare lnk') + '</div>' : u.trimite ? '<div class="acum ok"><small>Acum</small><b>' + esc(u.txt) + '</b><span>Pleacă la client:</span><div class="vf">' + (deTrimis(o).map((d) => '<div class="dc">' + docLinie(d) + '</div>').join('') || '<div class="dc"><span class="small mut">Niciun document încă.</span></div>') + '</div><div class="btns">' + btnAtas(o) + '</div>' + sBtn('strimitecl', u.lbl, o.id, 'pri mare') + '</div>' : acum(u)) +
     (!platita(o) && !SYNC.on && pl.some((p) => p.stare === 'initiata') ? '<p class="small mut ctr"><a href="#" data-a="pcap" data-id="' + pl.find((p) => p.stare === 'initiata').id + '">simulează plata (doar în demo)</a></p>' : '') +
     (ex.length ? '<h2>Specialist <i>' + ex.filter((t) => t.stare === 'terminat').length + ' din ' + ex.length + '</i></h2>' + ex.map(pas).join('') : '') +
     (inn.length ? '<h2>Raport <i>' + inn.filter((t) => t.stare === 'terminat').length + ' din ' + inn.length + '</i></h2>' + inn.map(pas).join('') : '') +
     (auto.length ? '<p class="small mut">Pași automați: ' + auto.filter((t) => t.stare === 'terminat').length + ' din ' + auto.length + ' gata.</p>' : '') +
-    '<h2>Documente <i>' + docs.length + '</i></h2>' + (docs.length ? '<div class="cd">' + docs.map((d) => '<div class="dc">' + docLinie(d) + '<small>' + esc(D('taskuri')[d.task] ? D('taskuri')[d.task].n : '') + ' · ' + esc(spName(d.incarcat_de)) + (d.vizibil ? ' · la client' : '') + '</small></div>').join('') + '</div>' : gol('Niciun document încă.')) +
+    '<h2>Documente <i>' + docs.length + '</i></h2>' + (verificata(o) && !o.livrata_la && !u.trimite ? '<div class="btns" style="margin:0 0 8px">' + btnAtas(o) + '</div>' : '') + (docs.length ? '<div class="cd">' + docs.map((d) => '<div class="dc">' + docLinie(d) + '<small>' + esc(D('taskuri')[d.task] ? D('taskuri')[d.task].n : d.atasat ? 'raport adăugat' : '') + ' · ' + esc(spName(d.incarcat_de)) + (d.vizibil ? ' · la client' : '') + '</small></div>').join('') + '</div>' : gol('Niciun document încă.')) +
     '<h2>Date salvate</h2><div class="cd">' + (ts.filter((t) => t.spec !== 'motor').map(dateDin).join('') || '<p class="small mut">Datele completate la pași apar aici și rămân salvate pentru verificare.</p>') +
     (areCF(o) ? '<div class="opt"><div><b>Explicația CF</b><small>' + (areExplicatie(o) ? 'face parte din comandă' : 'nu e în comandă') + '</small></div>' + (areExplicatie(o) || inchisa(o) ? '' : sBtn('sexpl', 'Adaugă', o.id, '')) + '</div>' : '') + '</div>' +
     '<details class="cd" data-k="plata"><summary>Plată · ' + (o.total ? lei(o.total) : '—') + '</summary>' + (pl.length ? pl.map((p) => '<div class="dc">' + chip(p.stare) + ' ' + lei(p.suma) + '<small>' + hhmm(p.la) + ' · ' + esc(p.proc) + (p.tx ? ' · ' + esc(p.tx) : '') + (p.factura ? ' · factura ' + esc(p.factura.nr) : '') + '</small></div>').join('') : '<p class="small mut">Nicio plată înregistrată.</p>') + '</details>' +
@@ -163,7 +176,7 @@ function adminPas(t) {
   let stare = '';
   if (t.stare === 'asteptare') stare = acum({ txt: 'Încă nu e rândul acestui pas.', sub: 'Se deschide singur când sunt gata pașii dinainte.' });
   else if (t.stare === 'terminat') stare = '<div class="acum ok"><small>Gata</small><b>' + esc(spName(t.specialist)) + ', ' + hhmm(t.terminat_la) + '</b></div>';
-  else if (extern(t) && !eu) stare = '<div class="acum"><small>' + (t.stare === 'atribuit' ? 'La specialist' : 'Trimite la specialist') + '</small>' + (t.stare === 'atribuit' ? '<b>' + esc(spName(t.specialist)) + '</b><span>lucrează din ' + hhmm(t.acceptat_la) + ' ' + ceas(t) + '</span>' : t.stare === 'oferit' ? '<b>Oferit lui ' + esc(spName(oferitLui(t))) + '</b><span>Așteaptă să accepte. Îl poți da direct altcuiva:</span>' : '<b>Alege cine face pasul</b>') +
+  else if (extern(t) && !eu) stare = '<div class="acum"><small>' + (t.stare === 'atribuit' ? 'La specialist' : 'Trimite la specialist') + '</small>' + (t.stare === 'atribuit' ? '<b>' + esc(spName(t.specialist)) + '</b><span>lucrează din ' + hhmm(t.acceptat_la) + ' ' + ceas(t) + '</span>' : t.stare === 'oferit' ? '<b>La bursă</b><span>' + bursa(t) + '. Îl poți da direct cuiva:</span>' : '<b>Alege cine face pasul</b>') +
     (t.stare === 'atribuit' ? '' : '<div class="als">' + (sp.length ? sp.map((s) => '<button data-a="strimite" data-id="' + t.id + '" data-x="' + s.id + '"><b>' + esc(s.nume) + '</b><span>' + esc(s.uat || s.judete.join(', ')) + ' · ' + load(s) + ' în lucru</span></button>').join('') : '<span>Niciun specialist activ pentru ' + esc(SPEC[t.spec]) + '.</span>') + '</div>') +
     '<div class="btns">' + sBtn('opcopie', 'Copiază cererea', t.id, '') + sBtn('seu', 'Pun eu documentul', t.id, '') + (t.stare === 'atribuit' ? sBtn('retrage', 'Retrage', t.id, '') : '') + '</div></div>';
   const primit = documenteIntrare(t), dinainte = t.dep.map((id) => D('taskuri')[id]).filter((x) => x && x.spec !== 'motor').map(dateDin).join('');
@@ -174,7 +187,10 @@ function adminPas(t) {
 }
 function adminMai() {
   const rol = (n, cine, ce) => '<li><b>' + n + '</b><div><span>' + cine + '</span><small>' + ce + '</small></div></li>';
-  return '<h1>Mai mult</h1><h2>Cine ce face</h2><ol class="cine">' + rol(1, 'Clientul', 'comandă și plătește pe site') + rol(2, 'Administratorul', 'verifică plata și comanda, apoi o preia') + rol(3, 'Specialistul', 'verifică, completează datele, atașează documentul și îl trimite înapoi') + rol(4, 'Administratorul', 'verifică ce a primit și pregătește raportul') + rol(5, 'Clientul', 'primește documentele, automat, după ultimul pas') + '</ol>' +
+  const adr = location.origin + location.pathname;
+  return '<h1>Mai mult</h1><h2>Cum curge o comandă</h2><ol class="cine">' + rol(1, 'Clientul', 'comandă și plătește cu cardul pe site') + rol(2, 'Automat', 'banca confirmă plata, iar comanda apare aici în cel mult un minut') + rol(3, 'Administratorul sau operatorul', 'verifică plata și comanda, apoi dă OK') + rol(4, 'Specialiștii', 'primesc toți notificare; o ia primul care acceptă și are 90 de minute') + rol(5, 'Specialistul', 'vede doar imobilul (nr. CF, UAT, adresă), fără datele clientului; încarcă PDF-ul și trimite') + rol(6, 'Administratorul', 'e anunțat, verifică documentul și, la rapoarte, adaugă raportul') + rol(7, 'Administratorul', 'apasă „Trimite clientului”; clientul primește documentele') + '</ol>' +
+    '<h2>Linkul pentru echipă</h2><div class="cd"><p class="small">Același link pentru administrator, operator și specialiști. Fiecare intră cu contul lui și vede doar partea lui.</p><p><b style="word-break:break-all">' + esc(adr) + '</b></p><p class="small mut">Pe telefon: deschide linkul în Chrome, apoi „Instalează aplicația”. Pe iPhone: Partajează, apoi „Adaugă pe ecranul principal”. Conturile se fac din versiunea completă, la Conturi.</p></div>' +
+    '<h2>Unde stau datele</h2><div class="cd"><p class="small">Comenzile, pașii și istoricul stau într-o bază de date Supabase din Frankfurt. PDF-urile stau într-un spațiu privat de fișiere, tot acolo, și se deschid doar cu cont. Pagina aplicației e găzduită gratuit pe GitHub Pages și nu conține date.</p></div>' +
     (typeof cardNotificari === 'function' ? cardNotificari() : '') +
     '<h2>Versiunea completă</h2><div class="cd"><p>Conturi, specialiști, contracte, plăți și decont, setări, plan.</p><a class="b" href="index.html">Deschide versiunea completă</a></div>' +
     '<div class="btns">' + sBtn('logout', 'Ieși din cont', '', '') + '</div>';
@@ -188,7 +204,7 @@ function specCap() {
 const linieSpec = (t) => { const im = D('imobile')[t.imobil] || {}; return (im.cf ? 'CF ' + im.cf + ' · ' : '') + esc(im.adresa || '') + (im.adresa ? ', ' : '') + esc(im.uat || '') + (im.judet ? ', ' + esc(im.judet) : ''); };
 function specNoi() {
   const of = L('oferte', (x) => x.spec === UI.spec && x.raspuns === 'deschisa').map((x) => D('taskuri')[x.task]).filter((t) => t && t.stare === 'oferit');
-  return specCap() + '<h1>Comenzi noi <i>' + of.length + '</i></h1>' + (of.length ? of.map((t) => '<div class="of"><small>' + tNr(t) + (t.urgent ? ' · urgent' : '') + '</small><b>' + esc(t.n) + '</b><span>' + linieSpec(t) + '</span><div class="of2"><div><small>primești</small><b>' + lei(t.tarif) + '</b></div><div><small>timp de lucru</small><b>' + (t.sla ? fmtD(t.sla) : '—') + '</b></div></div><div class="btns">' + sBtn('sacc', 'Accept', t.id, 'pri mare') + sBtn('sref', 'Nu pot', t.id, 'mare') + '</div></div>').join('') : gol('Nicio comandă nouă.', 'Când apare una, primești notificare.'));
+  return specCap() + '<h1>Comenzi noi <i>' + of.length + '</i></h1>' + (of.length ? of.map((t) => '<div class="of"><small>' + tNr(t) + (t.urgent ? ' · urgent' : '') + '</small><b>' + esc(t.n) + '</b><span>' + linieSpec(t) + '</span><div class="of2"><div><small>primești</small><b>' + lei(t.tarif) + '</b></div><div><small>timp de lucru</small><b>' + (t.sla ? fmtD(t.sla) : '—') + '</b></div></div><div class="btns">' + sBtn('sacc', 'Accept', t.id, 'pri mare') + sBtn('sref', 'Nu pot', t.id, 'mare') + '</div></div>').join('') : gol('Nicio comandă nouă.', 'Când apare una, primești notificare.')) + (of.length ? '<p class="small mut ctr">Comenzile le văd și alți specialiști. O ia primul care acceptă.</p>' : '');
 }
 function specLucru() {
   const ts = L('taskuri', (t) => t.specialist === UI.spec && ['atribuit', 'blocat'].includes(t.stare));
@@ -212,7 +228,7 @@ function specPas(t) {
 renderApp = function () {
   const app = $('#app'); if (!app) return;
   const coada = TOAST ? '<div id="toast" class="toast">' + esc(TOAST) + '</div>' : '';
-  if (!UI.auth) { app.innerHTML = '<div class="s2">' + loginView() + '</div>' + coada; return; }
+  if (!UI.auth) { app.innerHTML = '<div class="s2">' + loginView() + (syncAvailable() && !UI.setPass ? '<div class="login" style="margin-top:12px"><b>Fără parolă</b><p class="small mut">Scrie e-mailul contului mai sus și primești un link de intrare.</p><button class="b mare" data-a="slink">Trimite-mi link pe e-mail</button></div>' : '') + '</div>' + coada; return; }
   const rol = UI.auth.rol, sef = ['admin', 'tehnic', 'operator'].includes(rol);
   if (!sef && rol !== 'specialist') { app.innerHTML = '<div class="s2"><div class="gol2"><b>Versiunea simplă e pentru Administrator și Specialist.</b><span><a href="index.html">Deschide versiunea completă</a></span></div></div>' + coada; return; }
   if (rol === 'specialist') { UI.role = 'specialist'; UI.spec = UI.auth.sid; } else if (S.ca && D('specialisti')[S.ca]) { UI.role = 'specialist'; UI.spec = S.ca; } else { UI.role = rol; S.ca = null; }
@@ -225,8 +241,8 @@ renderApp = function () {
   const nr = { azi: sp ? 0 : randulTau().length, mesaje: sp ? 0 : intrebariDeschise().length, noi: sp ? L('oferte', (x) => x.spec === UI.spec && x.raspuns === 'deschisa').length : 0, lucru: sp ? L('taskuri', (x) => x.specialist === UI.spec && ['atribuit', 'blocat'].includes(x.stare)).length : 0 };
   const deschise = [...document.querySelectorAll('details[data-k][open]')].map((d) => d.dataset.k);
   const lista = L('specialisti', (s) => !s.spec.includes('analist'));
-  app.innerHTML = '<div class="s2"><header class="hd"><div class="br"><i></i><div><b>DD Operare</b><span>' + (sp ? 'Specialist' : 'Administrator') + ' · ' + esc(sp && D('specialisti')[UI.spec] ? D('specialisti')[UI.spec].nume : UI.auth.nume) + '</span></div></div>' +
-    (sef ? '<div class="seg"><button class="' + (sp ? '' : 'on') + '" data-a="sca" data-id="">Administrator</button><button class="' + (sp ? 'on' : '') + '" data-a="sca" data-id="' + esc(S.ca || (lista[0] || {}).id || '') + '">Specialist</button></div>' : sBtn('logout', 'Ieși', '', 'mic')) + '</header>' +
+  app.innerHTML = '<div class="s2"><header class="hd"><div class="br"><i></i><div><b>DD Operare</b><span>' + (sp ? 'Specialist' : rol === 'operator' ? 'Operator' : 'Administrator') + ' · ' + esc(sp && D('specialisti')[UI.spec] ? D('specialisti')[UI.spec].nume : UI.auth.nume) + '</span></div></div>' +
+    (sef ? '<div class="seg"><button class="' + (sp ? '' : 'on') + '" data-a="sca" data-id="">' + (rol === 'operator' ? 'Operator' : 'Administrator') + '</button><button class="' + (sp ? 'on' : '') + '" data-a="sca" data-id="' + esc(S.ca || (lista[0] || {}).id || '') + '">Specialist</button></div>' : sBtn('logout', 'Ieși', '', 'mic')) + '</header>' +
     (sef && sp ? '<div class="caa">Vezi ca <select data-s="ca">' + lista.map((s) => '<option value="' + s.id + '"' + (s.id === UI.spec ? ' selected' : '') + '>' + esc(s.nume) + ' · ' + esc(SPEC[s.spec[0]]) + '</option>').join('') + '</select></div>' : '') +
     '<main>' + corp + '</main>' +
     '<nav class="tb">' + taburi.map((x) => '<button class="' + (S.tab === x[0] && !t && !o ? 'on' : '') + '" data-a="stab" data-id="' + x[0] + '">' + x[1] + (nr[x[0]] ? '<i>' + nr[x[0]] + '</i>' : '') + '</button>').join('') + '</nav></div>' +
@@ -240,10 +256,12 @@ Object.assign(A, {
   stab: (d) => { S.tab = d.id; S.o = S.t = null; window.scrollTo(0, 0); if (d.id === 'mesaje' && typeof incarcaCereriApp === 'function' && CERERI_APP.rows == null) return incarcaCereriApp(); },
   so: (d) => { MODAL = null; if (!D('comenzi')[d.id]) { S.tab = 'mesaje'; S.o = S.t = null; return; } S.o = d.id; S.t = null; window.scrollTo(0, 0); },
   open: (d) => A.so(d),
-  st: (d) => { const t = D('taskuri')[d.id]; if (!t) return; S.t = t.id; S.o = t.comanda; window.scrollTo(0, 0); if (!eSpec() && intern(t) && ['disponibil', 'oferit'].includes(t.stare) && internId()) forceAssign(t.id, internId()); },
+  st: (d) => { const t = D('taskuri')[d.id]; if (!t) return; S.t = t.id; S.o = t.comanda; window.scrollTo(0, 0); if (!eSpec() && extern(t) && t.stare === 'terminat' && !t.vazut_admin) t.vazut_admin = now(); if (!eSpec() && intern(t) && ['disponibil', 'oferit'].includes(t.stare) && internId()) forceAssign(t.id, internId()); },
   sback: () => { if (S.t && !eSpec()) S.t = null; else { S.t = null; S.o = null; } },
   sfil: (d) => { S.f = d.id; S.tab = 'comenzi'; S.o = S.t = null; },
-  spreia: (d) => { const o = D('comenzi')[d.id]; if (!o || o.preluata_la) return; o.preluata_la = now(); o.preluata_de = (UI.auth || {}).nume || 'administrator'; ev('comanda.preluata', o.preluata_de, { k: 'comanda', id: o.id }, { verificat: ['plata', 'acord', 'imobil', 'servicii', 'client'], suma: o.total, acord: o.acord === true }); toast('Preluată. Pașii merg mai departe.'); },
+  spreia: (d) => { const o = D('comenzi')[d.id]; if (!o || o.preluata_la) return; o.preluata_la = now(); o.preluata_de = (UI.auth || {}).nume || 'administrator'; ev('comanda.preluata', o.preluata_de, { k: 'comanda', id: o.id }, { verificat: ['plata', 'acord', 'imobil', 'servicii', 'client'], suma: o.total, acord: o.acord === true }); advance(); toast('Preluată. Pasul a plecat la specialiști.'); },
+  strimitecl: (d) => { if (trimiteClient(d.id, (UI.auth || {}).nume)) toast('Comanda a plecat la client.'); },
+  slink: async () => { const i = document.querySelector('form[data-f="login"] [name="email"]'), email = i && i.value.trim(); if (!email) { toast('Scrie întâi e-mailul contului.'); return; } if (!SYNC.sb) { toast('Legătura cu serverul nu e pornită.'); return; } const { error } = await SYNC.sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false, emailRedirectTo: location.origin + location.pathname } }); toast(error ? 'Nu am putut trimite: ' + error.message : 'Ți-am trimis linkul. Deschide-l pe acest telefon.'); },
   strimite: (d) => { forceAssign(d.id, d.x); toast('Trimis la ' + spName(d.x) + '.'); },
   seu: (d) => { if (internId()) forceAssign(d.id, internId()); },
   sacc: (d) => { if (!acceptTask(d.id, UI.spec)) toast('Oferta nu mai e valabilă.'); else { S.t = d.id; S.tab = 'lucru'; window.scrollTo(0, 0); } },
@@ -268,6 +286,12 @@ document.addEventListener('change', (e) => {
   const k = e.target.dataset && e.target.dataset.s; if (k !== 'ca' && k !== 'per') return;
   if (k === 'ca') { S.ca = e.target.value; S.t = null; UI.knownOffers = null; } else S.per = e.target.value;
   renderApp();
+});
+document.addEventListener('change', (e) => {
+  if (!e.target.dataset || e.target.dataset.s !== 'rap') return;
+  const oid = e.target.dataset.id, cine = (UI.auth || {}).nume || 'admin';
+  Array.from(e.target.files).forEach((file) => { const d = ataseaza(oid, file.name || 'raport.pdf', Math.round(file.size / 1e4) / 100, cine, file.type); if (!d) return; FILEBLOBS[d.id] = URL.createObjectURL(file); if (typeof syncUpload === 'function') syncUpload(d, file); });
+  commit();
 });
 window.S2 = { S, etape, urmeaza, randulTau };
 })();

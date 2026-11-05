@@ -19,7 +19,7 @@ class LocalRepo {
   }
   col(n) { const c = this.db[n]; return { list: (p) => Object.values(c).filter(p || (() => true)), get: (id) => c[id], put: (o) => (c[o.id] = o), remove: (id) => { delete c[id]; } }; }
 }
-const R = new LocalRepo('epay_demo_v1');
+const R = new LocalRepo('epay_demo_v2');
 
 /* Ceasul e cel real. offsetMs se folosește doar la construirea seed-ului (comenzi „de acum 40 de minute”). */
 const now = () => Date.now() + ((R.db && R.db.offsetMs) || 0);
@@ -193,10 +193,16 @@ function dispatch(t) {
     const of = { id: uid('of'), task: t.id, spec: s.id, oferit_la: now(), expira_la: now() + 1e12, raspuns: 'deschisa', motiv: '', auto: true }; D('oferte')[of.id] = of;
     ev('oferta.creata', 'sistem', { k: 'task', id: t.id }, { spec: s.id, auto: true }); acceptTask(t.id, s.id, true); return;
   }
-  const s = el[0]; t.ofertate.push(s.id); t.stare = 'oferit'; t.oferit_la = now();
-  const of = { id: uid('of'), task: t.id, spec: s.id, oferit_la: now(), expira_la: now() + ofertaMin(t) * MIN, raspuns: 'deschisa', motiv: '' }; D('oferte')[of.id] = of;
-  ev('oferta.creata', 'sistem', { k: 'task', id: t.id }, { spec: s.id });
+  /* bursă: pasul apare la toți specialiștii potriviți și îl ia primul care acceptă */
+  t.stare = 'oferit'; t.oferit_la = now();
+  el.forEach(s => {
+    t.ofertate.push(s.id);
+    const of = { id: uid('of'), task: t.id, spec: s.id, oferit_la: now(), expira_la: now() + ofertaMin(t) * MIN, raspuns: 'deschisa', motiv: '' }; D('oferte')[of.id] = of;
+    ev('oferta.creata', 'sistem', { k: 'task', id: t.id }, { spec: s.id });
+  });
 }
+/* pașii oamenilor pornesc abia după ce administratorul a verificat și a preluat comanda (settings.okAdmin; implicit da) */
+const asteaptaOk = (t) => t.spec !== 'motor' && D('settings').okAdmin !== false && !(D('comenzi')[t.comanda] || {}).preluata_la;
 function advance() {
   if (limited()) return;
   let ch = true, guard = 0;
@@ -204,6 +210,7 @@ function advance() {
     ch = false;
     L('taskuri', t => t.stare === 'asteptare').forEach(t => {
       const l = D('linii')[t.linie]; if (l.stare === 'problema' || l.stare === 'anulat') return;
+      if (asteaptaOk(t)) return;
       if (depsMet(t)) { t.stare = 'disponibil'; ch = true; ev('task.disponibil', 'sistem', { k: 'task', id: t.id }); dispatch(t); notifyTaskReady(t); }
     });
   }
@@ -220,7 +227,7 @@ function tick() {
   runMotors();
   L('oferte', of => of.raspuns === 'deschisa' && of.expira_la <= tm).forEach(of => {
     of.raspuns = 'expirata'; const t = D('taskuri')[of.task]; ev('oferta.expirata', 'sistem', { k: 'task', id: t.id }, { spec: of.spec });
-    if (t.stare === 'oferit') dispatch(t);
+    if (t.stare === 'oferit' && !L('oferte', x => x.task === t.id && x.raspuns === 'deschisa').length) dispatch(t);
   });
   L('taskuri', t => t.stare === 'atribuit' && !t.terta && !t.teren && t.sla > 0 && t.acceptat_la + t.sla * MIN <= tm).forEach(t => {
     const sp = t.specialist; t.pierdut.push({ spec: sp, la: tm }); t.excluse.push(sp); t.specialist = null; t.acceptat_la = null; t.stare = 'disponibil';
@@ -246,6 +253,7 @@ function acceptTask(tid, sid, auto) {
   const t = D('taskuri')[tid]; const of = L('oferte', x => x.task === tid && x.spec === sid && x.raspuns === 'deschisa')[0];
   if (!of || t.stare !== 'oferit') return false;
   of.raspuns = 'acceptata'; t.stare = 'atribuit'; t.specialist = sid; t.acceptat_la = now();
+  L('oferte', x => x.task === tid && x.raspuns === 'deschisa').forEach(x => (x.raspuns = 'retrasa'));
   ev('task.acceptat', sid, { k: 'task', id: tid }, { spec: sid, auto: !!auto });
   const o = D('comenzi')[t.comanda]; if (o && !o.in_lucru_notificat && !limited()) { o.in_lucru_notificat = true; notify(o, 'in_lucru', {}); }
   return true;
@@ -253,7 +261,7 @@ function acceptTask(tid, sid, auto) {
 function refuseTask(tid, sid, motiv) {
   const of = L('oferte', x => x.task === tid && x.spec === sid && x.raspuns === 'deschisa')[0]; if (!of) return;
   of.raspuns = 'refuzata'; of.motiv = motiv || ''; const t = D('taskuri')[tid];
-  ev('oferta.refuzata', sid, { k: 'task', id: tid }, { spec: sid, motiv }); if (t.stare === 'oferit' && !limited()) dispatch(t);
+  ev('oferta.refuzata', sid, { k: 'task', id: tid }, { spec: sid, motiv }); if (t.stare === 'oferit' && !limited() && !L('oferte', x => x.task === tid && x.raspuns === 'deschisa').length) dispatch(t);
 }
 function returnTask(tid, sid, motiv) {
   const t = D('taskuri')[tid]; if (t.specialist !== sid || t.stare !== 'atribuit') return;
@@ -343,13 +351,32 @@ function maybeDeliver(l) {
   l.stare = 'livrat'; l.livrat_la = now();
   const outs = ts.filter(x => x.out).map(x => x.out);
   const docs = L('documente', d => d.linie === l.id && (outs.includes(d.tip) || ts.some(x => x.out && x.fisiere.some(ff => ff.hash === d.hash))));
-  docs.forEach(d => (d.vizibil = true));
   const o = D('comenzi')[l.comanda];
+  /* cu trimitere manuală, documentele rămân la administrator până apasă „Trimite clientului” (settings.trimitereManuala; implicit da) */
+  const manual = D('settings').trimitereManuala !== false;
+  if (manual) l.de_trimis = docs.map(d => d.id); else docs.forEach(d => (d.vizibil = true));
   ev('linie.livrata', 'sistem', { k: 'linie', id: l.id }, { svc: l.svc });
-  if (!l.incl) notify(o, 'document', { doc: SV[l.svc][0] });
+  if (!l.incl && !manual) notify(o, 'document', { doc: SV[l.svc][0] });
   const open = L('linii', x => x.comanda === o.id && !['livrat', 'anulat'].includes(x.stare));
-  if (!open.length && !o.livrata_la) { o.livrata_la = now(); o.stare = 'livrata'; ev('comanda.livrata', 'sistem', { k: 'comanda', id: o.id }); notify(o, 'livrata', {}); }
+  if (!open.length && !o.livrata_la) {
+    if (manual) { if (!o.gata_la) { o.gata_la = now(); ev('comanda.gata', 'sistem', { k: 'comanda', id: o.id }); notifyIn('admin', 'Comanda ' + o.nr + ' e completă: de verificat și trimis', o.id); } }
+    else { o.livrata_la = now(); o.stare = 'livrata'; ev('comanda.livrata', 'sistem', { k: 'comanda', id: o.id }); notify(o, 'livrata', {}); }
+  }
   advance();
+}
+/* administratorul a verificat documentele și le trimite clientului */
+function trimiteClient(oid, actor) {
+  const o = D('comenzi')[oid]; if (!o || o.livrata_la || !o.gata_la) return false;
+  L('linii', l => l.comanda === oid && l.stare === 'livrat').forEach(l => { (l.de_trimis || []).forEach(id => { const d = D('documente')[id]; if (d) d.vizibil = true; }); if (!l.incl) notify(o, 'document', { doc: SV[l.svc][0] }); });
+  L('documente', d => d.comanda === oid && d.atasat).forEach(d => (d.vizibil = true));
+  o.livrata_la = now(); o.stare = 'livrata'; ev('comanda.livrata', actor || 'admin', { k: 'comanda', id: o.id }, { manual: true }); notify(o, 'livrata', {});
+  return true;
+}
+/* document pus direct pe comandă de administrator (raportul final), fără pas */
+function ataseaza(oid, nume, mb, actor, mime) {
+  const o = D('comenzi')[oid]; if (!o) return null;
+  const d = { id: uid('dc'), comanda: oid, linie: null, task: null, tip: 'raport', nume, mime: mime || 'application/pdf', hash: hashStr(nume + oid + now()), incarcat_de: actor || 'admin', la: now(), vizibil: false, trimis: [], atasat: true };
+  D('documente')[d.id] = d; ev('document.incarcat', actor || 'admin', { k: 'comanda', id: oid }, { tip: 'raport', nume }); return d;
 }
 function closeOrder(oid) { const o = D('comenzi')[oid]; o.stare = 'inchisa'; o.inchisa_la = now(); ev('comanda.inchisa', 'admin', { k: 'comanda', id: oid }); }
 
@@ -468,6 +495,8 @@ function statsOf(sid) {
 /* ---------- seed ---------- */
 function seedAll() {
   R.db = emptyDb();
+  /* demo-ul se construiește cu porțile deschise; la final comenzile nepornite se întorc la „de verificat” */
+  R.db.settings.okAdmin = false; R.db.settings.trimitereManuala = false;
   SPECIALISTI_SEED.forEach(s => {
     const sp = Object.assign({}, s); D('specialisti')[sp.id] = sp;
     const t0 = Date.now(); const full = sp.status === 'activ';
@@ -520,6 +549,13 @@ function seedAll() {
   addSuggestion('sp_elena', null, 'Pentru opinie am nevoie și de actul de dobândire; cereți-l clientului la comandă.', 'flux');
   /* oferte deschise: reprogramate de la „acum” */
   L('oferte', of => of.raspuns === 'deschisa').forEach(of => { const t = D('taskuri')[of.task]; of.oferit_la = Date.now(); of.expira_la = Date.now() + ofertaMin(t) * MIN; t.oferit_la = Date.now(); });
+  R.db.settings.okAdmin = true; R.db.settings.trimitereManuala = true;
+  L('comenzi', o => o.plata_la).forEach(o => {
+    const om = L('taskuri', t => t.comanda === o.id && t.spec !== 'motor');
+    if (o.livrata_la || om.some(t => (t.specialist && t.spec !== 'analist') || t.stare === 'terminat')) { o.preluata_la = o.plata_la; o.preluata_de = 'Manu'; return; }
+    om.filter(t => t.stare !== 'terminat' && t.stare !== 'anulat').forEach(t => { t.stare = 'asteptare'; t.ofertate = []; t.specialist = null; t.acceptat_la = null; });
+    L('oferte', x => x.raspuns === 'deschisa' && om.some(t => t.id === x.task)).forEach(x => (x.raspuns = 'retrasa'));
+  });
   R.db.evenimente.push({ id: R.db.evenimente.length + 1, t: Date.now(), tip: 'seed', actor: 'sistem', obj: null, data: { comenzi: Object.keys(D('comenzi')).length } });
   R.save();
 }

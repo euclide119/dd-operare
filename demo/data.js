@@ -179,7 +179,9 @@ const DEFAULT_SETTINGS = {
   slaFactor: 1, problemaMaxOre: 4,
   judeteActive: ['Timiș', 'Arad', 'Cluj', 'București'],
   taxaAncpiMedie: 20, /* lei, pentru marja pe comandă [E] */
-  retragereZile: 14
+  retragereZile: 14,
+  okAdmin: true, /* pașii pornesc după verificarea și preluarea comenzii de către administrator */
+  trimitereManuala: true /* documentele pleacă la client când apasă administratorul, nu singure */
 };
 
 /* ---- șabloane notificări (email + WhatsApp) ---- */
