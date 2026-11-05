@@ -243,6 +243,8 @@ function reconcile() {
   /* comenzile plătite pe site intră prin funcția comanda-site, cu plata deja capturată: aici pornesc sarcinile */
   L('comenzi', o => o.din_site && o.plata_la && o.stare === 'neconfirmata').forEach(activate);
   L('taskuri', t => t.stare === 'terminat' && !t.postDone).forEach(t => onDone(t));
+  /* bursă: după ce un specialist a luat pasul de pe telefonul lui, ofertele celorlalți se închid aici */
+  L('oferte', x => x.raspuns === 'deschisa' && (D('taskuri')[x.task] || {}).stare !== 'oferit').forEach(x => (x.raspuns = 'retrasa'));
   /* pași rămași fără ofertă deschisă (refuzați / returnați pe un dispozitiv limitat) → se oferă mai departe */
   L('taskuri', t => t.spec !== 'motor' && ['oferit', 'disponibil'].includes(t.stare) && !L('oferte', x => x.task === t.id && x.raspuns === 'deschisa').length).forEach(t => dispatch(t));
   L('comenzi', o => !o.in_lucru_notificat && L('taskuri', t => t.comanda === o.id && t.specialist && t.specialist !== 'motor').length).forEach(o => { o.in_lucru_notificat = true; notify(o, 'in_lucru', {}); });
@@ -364,6 +366,22 @@ function maybeDeliver(l) {
   }
   advance();
 }
+/* administratorul a verificat plata și comanda: clientul află că e în ordine, iar pașii pornesc */
+function preiaComanda(oid, actor) {
+  const o = D('comenzi')[oid]; if (!o || o.preluata_la) return false;
+  o.preluata_la = now(); o.preluata_de = actor || 'administrator'; o.in_lucru_notificat = true;
+  if (o.completare && !o.completare.rezolvat_la) o.completare.rezolvat_la = now();
+  ev('comanda.preluata', o.preluata_de, { k: 'comanda', id: o.id }, { verificat: ['plata', 'acord', 'imobil', 'servicii', 'client'], suma: o.total, acord: o.acord === true });
+  notify(o, 'in_ordine', {}); advance(); return true;
+}
+/* lipsește ceva din comandă: clientul primește mesajul cu linkul de completare, iar comanda așteaptă */
+function cereCompletare(oid, text, actor) {
+  const o = D('comenzi')[oid]; text = String(text || '').trim(); if (!o || !text) return false;
+  o.completare = { la: now(), text, de: actor || 'administrator', rezolvat_la: null };
+  ev('comanda.completare', o.completare.de, { k: 'comanda', id: o.id }, { text });
+  notify(o, 'completare', { descriere: text }); R.db.mesaje.push({ comanda: oid, de: 'echipă', text: 'Lipsește: ' + text, la: now() });
+  return true;
+}
 /* administratorul a verificat documentele și le trimite clientului */
 function trimiteClient(oid, actor) {
   const o = D('comenzi')[oid]; if (!o || o.livrata_la || !o.gata_la) return false;
@@ -435,9 +453,11 @@ function declineQuote(qid) { const q = D('oferte_pret')[qid]; q.refuzat_la = now
 /* ---------- notificări ---------- */
 function render(tpl, vars) { return tpl.replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? vars[k] : m)); }
 function imoLabel(o) { const im = D('imobile')[o.imobile[0]]; return im.cf ? 'CF ' + im.cf + ', ' + im.uat : im.adresa + ', ' + im.uat; }
+/* linkul din mesajele către client: la comenzile de pe site, pagina de urmărire a site-ului (settings.linkUrmarire, cu {nr}) */
+function linkClient(o) { const b = D('settings').linkUrmarire; return o.din_site && b ? b.replace('{nr}', encodeURIComponent(o.nr)) : 'platforma/#/client/' + o.nr; }
 function notify(o, tplKey, extra) {
   const tp = TEMPLATES[tplKey]; if (!tp) return; const cl = D('clienti')[o.client];
-  const vars = Object.assign({ nr: o.nr, imobil: imoLabel(o), link: 'platforma/#/client/' + o.nr }, extra || {});
+  const vars = Object.assign({ nr: o.nr, imobil: imoLabel(o), link: linkClient(o) }, extra || {});
   const mk = (canal, subj, body, stare, eroare) => { const n = { id: uid('nt'), dest: 'client', comanda: o.id, canal, sablon: tplKey, subj, body, la: now(), stare, eroare: eroare || '' }; D('notificari')[n.id] = n; return n; };
   mk('email', render(tp.subj, vars), render(tp.body, vars), cl.email && cl.email.includes('@') ? (o.din_site ? 'de trimis' : 'trimis (simulat)') : 'eroare', cl.email && cl.email.includes('@') ? '' : 'adresă invalidă');
   if (tp.wa && cl.wa_optin && cl.wa) mk('whatsapp', '[șablon ' + tp.wa + ']', render(tp.body, vars), 'trimis (simulat)');

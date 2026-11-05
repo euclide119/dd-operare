@@ -186,10 +186,12 @@ const DEFAULT_SETTINGS = {
 
 /* ---- șabloane notificări (email + WhatsApp) ---- */
 const TEMPLATES = {
-  primita: { subj: 'Comanda {nr} a fost primită', body: 'Am primit comanda {nr} pentru {imobil}. Începem lucrul. Urmărești starea aici: {link}', wa: 'comanda_primita' },
+  primita: { subj: 'Comanda {nr} a fost primită', body: 'Am primit comanda {nr} pentru {imobil} și plata. O verificăm și revenim cu confirmarea. Urmărești starea aici: {link}', wa: 'comanda_primita' },
+  in_ordine: { subj: 'Comanda {nr} e în ordine: am început lucrul', body: 'Am verificat comanda {nr} pentru {imobil}. Plata și datele sunt în regulă și am început lucrul. Urmărești starea aici: {link}', wa: null },
+  completare: { subj: 'Comanda {nr}: mai avem nevoie de ceva de la tine', body: 'Pentru comanda {nr} ({imobil}) ne lipsește: {descriere}. Te rugăm să completezi aici: {link}. Până atunci comanda așteaptă.', wa: null },
   in_lucru: { subj: 'Comanda {nr} e în lucru', body: 'Specialistul a preluat primul pas din comanda {nr}. Starea la zi: {link}', wa: null },
   document: { subj: 'Document nou în comanda {nr}: {doc}', body: 'Ai un document nou: {doc}. Îl descarci din pagina comenzii: {link}', wa: 'document_livrat' },
-  livrata: { subj: 'Comanda {nr} e livrată', body: 'Toate serviciile din comanda {nr} sunt livrate. Documentele sunt în pagina comenzii: {link}. Ai 30 de zile pentru întrebări.', wa: 'comanda_livrata' },
+  livrata: { subj: 'Comanda {nr} e gata', body: 'Comanda {nr} e gata. Documentele sunt aici: {link}. Ai 30 de zile pentru întrebări.', wa: 'comanda_livrata' },
   programare: { subj: 'Programează vizita — comanda {nr}', body: 'Pentru {serviciu} avem nevoie de o dată și un contact. Răspunde aici: {link}', wa: 'programare_teren' },
   problema: { subj: 'Avem nevoie de o informație — comanda {nr}', body: 'La {serviciu} a apărut o problemă: {descriere}. Ce îți cerem: {link}', wa: 'problema_comanda' },
   oferta: { subj: 'Oferta ta pentru {serviciu}', body: 'Prețul pentru {serviciu} este {pret} lei. Poți accepta aici: {link}', wa: null },

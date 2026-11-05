@@ -211,7 +211,7 @@ function planOperare() {
 Object.assign(A, {
   fluxst: (d) => { const [o, i] = d.id.split('|'); UI.fluxSt = { o, i: Number(i) }; },
   oppas: (d) => { UI.view = 'pas'; UI.sel = d.id; UI.fluxSt = null; MODAL = null; },
-  oppreia: (d) => { const o = D('comenzi')[d.id]; o.preluata_la = now(); o.preluata_de = (UI.auth || {}).nume || 'operator'; ev('comanda.preluata', 'operator', { k: 'comanda', id: o.id }, {}); UI.view = 'detaliu'; UI.sel = o.id; UI.fluxSt = null; },
+  oppreia: (d) => { preiaComanda(d.id, (UI.auth || {}).nume || 'operator'); UI.view = 'detaliu'; UI.sel = d.id; UI.fluxSt = null; },
   opcopie: async (d) => { const t = D('taskuri')[d.id]; try { await navigator.clipboard.writeText(copieCerere(t)); toast('Cererea e copiată. O poți lipi în mesaj.'); } catch (e) { openModal('Cererea pentru specialist', '<textarea rows="9" style="width:100%">' + esc(copieCerere(t)) + '</textarea>'); } },
   opfin: (d) => finPas(d.id),
   optrimite: (d) => { if (trimiteClient(d.id, (UI.auth || {}).nume)) toast('Comanda a plecat la client.'); },

@@ -4,7 +4,7 @@
    Se încarcă ultimul: înlocuiește renderApp și adaugă acțiunile cu prefixul „s”.
    Totul stă într-o funcție, ca numele de aici să nu se lovească de cele din versiunea completă. */
 (() => {
-const S = { tab: 'azi', o: null, t: null, f: 'toate', q: '', per: '', ca: null };
+const S = { tab: 'azi', o: null, t: null, f: 'toate', q: '', per: '', ca: null, pg: null, qcf: '' };
 try { Object.assign(S, JSON.parse(sessionStorage.getItem('dd_simplu') || '{}')); } catch (e) { /* fără sessionStorage */ }
 const sSave = () => { try { sessionStorage.setItem('dd_simplu', JSON.stringify(S)); } catch (e) { /* ignor */ } };
 
@@ -32,7 +32,7 @@ function etape(o) {
   const grup = (g, fara) => !g.length ? fara : gata(g) === g.length ? 'ok' : pb(g) ? 'pb' : v && g.some(inLucru) ? 'act' : 'urm';
   const e = [
     { k: 'plata', n: 'Plată', st: p ? 'ok' : 'act', sub: p ? hhmm(o.plata_la) : 'se așteaptă' },
-    { k: 'preluare', n: 'Preluare', st: v ? 'ok' : p ? 'act' : 'urm', sub: v ? (o.preluata_de || '') : '' },
+    { k: 'preluare', n: 'Preluare', st: v ? 'ok' : p ? 'act' : 'urm', sub: v ? (o.preluata_de || '') : o.completare && !o.completare.rezolvat_la ? 'așteaptă clientul' : '' },
     { k: 'spec', n: 'Specialist', st: grup(ex, v ? 'ok' : 'urm'), sub: ex.length ? gata(ex) + ' din ' + ex.length : 'nu e nevoie' },
     { k: 'raport', n: 'Raport', st: grup(inn, o.livrata_la || o.gata_la ? 'ok' : 'urm'), sub: inn.length ? gata(inn) + ' din ' + inn.length : '' },
     { k: 'client', n: 'Client', st: o.livrata_la ? 'ok' : o.gata_la ? 'act' : 'urm', sub: o.livrata_la ? hhmm(o.livrata_la) : o.gata_la ? 'de trimis' : '' }
@@ -74,7 +74,7 @@ function randulTau() {
   intrebariDeschise().forEach((m) => q.push({ p: 2, c: 'galben', et: 'Întrebare de la client', ce: m.text.slice(0, 80), sub: nr(m.comanda) + ' · ' + hhmm(m.la), a: 'so', id: m.comanda, lbl: 'Răspunde' }));
   L('taskuri', (t) => extern(t) && t.stare === 'terminat' && !t.vazut_admin && !laMine(t) && D('comenzi')[t.comanda] && !D('comenzi')[t.comanda].livrata_la && now() - t.terminat_la < 86400000).forEach((t) => q.push({ p: 2.2, c: 'verde nou', et: 'Primit de la specialist', ce: t.n, sub: nr(t.comanda) + ' · ' + spName(t.specialist) + ', ' + hhmm(t.terminat_la), a: 'st', id: t.id, lbl: 'Vezi' }));
   L('comenzi', (o) => o.gata_la && !o.livrata_la && o.stare !== 'anulata').forEach((o) => q.push({ p: 2.5, c: 'verde', et: 'Completă', ce: servicii(o), sub: o.nr + ' · gata ' + hhmm(o.gata_la), a: 'so', id: o.id, lbl: 'Verifică și trimite' }));
-  L('comenzi', (o) => platita(o) && !verificata(o) && o.stare !== 'anulata').sort((a, b) => a.plata_la - b.plata_la).forEach((o) => q.push({ p: 3, c: 'galben', et: 'Comandă nouă', ce: servicii(o), sub: o.nr + ' · plătită ' + hhmm(o.plata_la), a: 'so', id: o.id, lbl: 'Verifică' }));
+  L('comenzi', (o) => platita(o) && !verificata(o) && o.stare !== 'anulata').sort((a, b) => a.plata_la - b.plata_la).forEach((o) => q.push({ p: o.completare && !o.completare.rezolvat_la ? 5.5 : 3, c: o.completare && !o.completare.rezolvat_la ? '' : 'galben', et: o.completare && !o.completare.rezolvat_la ? 'Așteaptă clientul' : 'Comandă nouă', ce: servicii(o), sub: o.nr + ' · plătită ' + hhmm(o.plata_la), a: 'so', id: o.id, lbl: 'Verifică' }));
   /* pașii unei comenzi încă neverificate nu intră în listă: întâi se verifică și se preia comanda */
   const ver = (t) => { const o = D('comenzi')[t.comanda]; return !!o && verificata(o); };
   L('taskuri', (t) => ver(t) && inLucru(t) && (intern(t) || (t.stare === 'atribuit' && extern(t) && laMine(t)))).forEach((t) => q.push({ p: 4, c: '', et: 'Raport', ce: t.n, sub: nr(t.comanda), a: 'st', id: t.id, lbl: 'Lucrează' }));
@@ -158,7 +158,7 @@ function adminComanda(o) {
   const msg = toateMesajele().filter((m) => m.comanda === o.id);
   const u = urmeaza(o);
   return '<a class="inap" href="#" data-a="sback">‹ Comenzi</a><div class="tit"><h1>' + o.nr + '</h1>' + (o.urgent ? tag('urgent', 'rosu') : '') + '</div><p class="sub">' + imobil(o) + ' · ' + esc(clName(o)) + '</p>' + trepte(o) + comandat(o) +
-    (u.a === 'spreia' ? '<div class="acum"><small>Acum</small><b>' + esc(u.txt) + '</b>' + verificare(o) + sBtn('spreia', u.lbl, o.id, 'pri mare') + sBtn('scrie', 'Ceva nu e în regulă: scriu clientului', o.id, 'mare lnk') + '</div>' : u.trimite ? '<div class="acum ok"><small>Acum</small><b>' + esc(u.txt) + '</b><span>Pleacă la client:</span><div class="vf">' + (deTrimis(o).map((d) => '<div class="dc">' + docLinie(d) + '</div>').join('') || '<div class="dc"><span class="small mut">Niciun document încă.</span></div>') + '</div><div class="btns">' + btnAtas(o) + '</div>' + sBtn('strimitecl', u.lbl, o.id, 'pri mare') + '</div>' : acum(u)) +
+    (u.a === 'spreia' ? '<div class="acum"><small>Acum</small><b>' + esc(u.txt) + '</b>' + verificare(o) + sBtn('spreia', u.lbl, o.id, 'pri mare') + (o.completare && !o.completare.rezolvat_la ? '<span>Ai cerut clientului, ' + hhmm(o.completare.la) + ': ' + esc(o.completare.text) + '</span>' : '') + sBtn('slipsa', 'Lipsește ceva: cer clientului să completeze', o.id, 'mare lnk') + '</div>' : u.trimite ? '<div class="acum ok"><small>Acum</small><b>' + esc(u.txt) + '</b><span>Pleacă la client:</span><div class="vf">' + (deTrimis(o).map((d) => '<div class="dc">' + docLinie(d) + '</div>').join('') || '<div class="dc"><span class="small mut">Niciun document încă.</span></div>') + '</div><div class="btns">' + btnAtas(o) + '</div>' + sBtn('strimitecl', u.lbl, o.id, 'pri mare') + '</div>' : acum(u)) +
     (!platita(o) && !SYNC.on && pl.some((p) => p.stare === 'initiata') ? '<p class="small mut ctr"><a href="#" data-a="pcap" data-id="' + pl.find((p) => p.stare === 'initiata').id + '">simulează plata (doar în demo)</a></p>' : '') +
     (ex.length ? '<h2>Specialist <i>' + ex.filter((t) => t.stare === 'terminat').length + ' din ' + ex.length + '</i></h2>' + ex.map(pas).join('') : '') +
     (inn.length ? '<h2>Raport <i>' + inn.filter((t) => t.stare === 'terminat').length + ' din ' + inn.length + '</i></h2>' + inn.map(pas).join('') : '') +
@@ -185,10 +185,92 @@ function adminPas(t) {
     (t.k === 'cf3' ? panouComparatie(t) : '') + formPas(t, !editabil) +
     (editabil ? '<div class="bar">' + sBtn('sfin', 'Gata, mai departe', t.id, 'pri mare') + '</div><p class="ctr small"><a href="#" class="mut" data-a="pbm" data-id="' + t.id + '">Am o problemă la acest pas</a></p>' : '');
 }
+
+/* ---------- Echipă și conturi: cine are link, cine l-a folosit, test de intrare ---------- */
+const X = { push: [], test: null, inv: null };
+const ROL2 = { admin: 'Administrator', operator: 'Operator', specialist: 'Specialist', tehnic: 'Tehnic', sales: 'Sales', plati: 'Plăți' };
+const adresa = () => location.origin + location.pathname;
+const invitatie = (c) => 'Aplicația DD Operare\nLink: ' + adresa() + '\nUtilizator: ' + c.email + '\nParola: cea primită de la administrator' + '\nPe telefon: deschide linkul în Chrome, apoi „Instalează aplicația” și „Pornește notificările”. Pe iPhone: Partajează, apoi „Adaugă pe ecranul principal”.';
+const cand = (s) => (s ? hhmm(new Date(s).getTime()) : '');
+async function incarcaEchipa() {
+  if (!SYNC.on) return;
+  try { UI.conturi = (await fnConturi({ actiune: 'lista' })).conturi; } catch (e) { UI.conturi = UI.conturi || []; toast(e.message); }
+  const { data } = await SYNC.sb.from('push_abonamente').select('*'); X.push = data || [];
+}
+function adminEchipa() {
+  const demo = !SYNC.on, eAdmin = UI.auth.rol === 'admin';
+  const list = demo ? L('specialisti', (s) => !s.spec.includes('analist')).map((s) => ({ id: s.id, email: s.email, nume: s.nume, rol: 'specialist', specialist_id: s.id, confirmat: true })) : UI.conturi;
+  const card = (c) => {
+    const ab = X.push.filter((p) => p.user_id === c.id), sid = c.specialist_id;
+    const lucru = sid ? L('taskuri', (t) => t.specialist === sid && ['atribuit', 'blocat'].includes(t.stare)).length : 0, gata = sid ? L('taskuri', (t) => t.specialist === sid && t.stare === 'terminat').length : 0;
+    return '<div class="ct"><div class="ct1"><b>' + esc(c.nume || c.email) + '</b>' + tag(ROL2[c.rol] || 'fără rol', c.rol ? 'alb' : 'galben') + (c.blocat ? tag('blocat', 'rosu') : c.confirmat ? '' : tag('invitat, neintrat', 'galben')) + '</div><span class="small mut">' + esc(c.email || '') + (sid ? ' · ' + esc(SPEC[(D('specialisti')[sid] || { spec: [] }).spec[0]] || '') : '') + '</span>' +
+      '<dl class="ctd"><dt>Link emis</dt><dd>' + (cand(c.creat) || '—') + '</dd><dt>Ultima intrare</dt><dd>' + (cand(c.ultima) || (demo ? '—' : '<b class="rosu">niciodată</b>')) + '</dd><dt>Notificări</dt><dd>' + (ab.length ? 'pornite pe ' + ab.length + (ab.length === 1 ? ' dispozitiv' : ' dispozitive') + (ab.some((p) => p.eroare) ? ' · cu eroare' : '') : demo ? '—' : 'nepornite') + '</dd>' + (sid ? '<dt>Pași</dt><dd>' + lucru + ' în lucru · ' + gata + ' trimiși</dd>' : '') + '</dl>' +
+      (demo ? '' : '<div class="btns">' + sBtn('sinv', 'Copiază invitația', c.id, 'mic') + (ab.length ? sBtn('spushtest', 'Notificare de test', c.id, 'mic') : '') + (eAdmin ? btn('controlm', 'Rol', { id: c.id, c: 'mic' }) + btn('contreset', 'Resetare parolă', { id: c.email, c: 'mic' }) + (c.id === SYNC.user.id ? '' : btn(c.blocat ? 'contdebloc' : 'contbloc', c.blocat ? 'Deblochează' : 'Blochează', { id: c.id, c: 'mic' })) : '') + '</div>') + '</div>';
+  };
+  const sp = L('specialisti', (s) => !s.spec.includes('analist'));
+  const nou = '<div class="cd"><div class="cps">' + '<label class="cp">E-mail (utilizatorul)<input data-m="email" type="email" autocomplete="off"></label><label class="cp">Nume<input data-m="nume"></label>' +
+    '<label class="cp">Rol<select data-m="rol"><option value="specialist">Specialist</option><option value="operator">Operator</option><option value="admin">Administrator</option></select></label>' +
+    '<label class="cp">Specialist<select data-m="spid"><option value="__nou">+ specialist nou</option>' + sp.map((s) => '<option value="' + s.id + '">' + esc(s.nume) + ' · ' + esc(SPEC[s.spec[0]]) + '</option>').join('') + '</select></label>' +
+    '<label class="cp">Specialitate (la specialist nou)<select data-m="spec">' + SPEC_EXTERN.map((k) => '<option value="' + k + '">' + esc(SPEC[k]) + '</option>').join('') + '</select></label><label class="cp">Județe (la specialist nou)<input data-m="judete" placeholder="Timiș, Arad"></label>' +
+    '<label class="cp">Parolă inițială (minimum 8 caractere)<input data-m="parola" autocomplete="off"></label></div><p class="small mut">Cu parolă: contul merge imediat și îi trimiți tu linkul, utilizatorul și parola. Fără parolă: persoana primește un e-mail de invitație și își alege singură parola.</p>' + sBtn('scontnou', 'Creează contul', '', 'pri mare') + '</div>';
+  return '<a class="inap" href="#" data-a="spg" data-id="">‹ Mai mult</a><h1>Echipă și conturi</h1>' +
+    '<div class="cd"><small class="mut">Linkul aplicației, același pentru toți</small><p><b style="word-break:break-all">' + esc(adresa()) + '</b></p>' + sBtn('slinkcopie', 'Copiază linkul', '', 'mic') + '</div>' +
+    (demo ? '<div class="acum"><small>Demo</small><b>Aici nu există conturi reale.</b><span>Mai jos sunt specialiștii de test, ca să vezi cum arată evidența. Conturile se fac în aplicația reală, cu contul de administrator.</span></div>' : '') +
+    (demo || !eAdmin ? (demo ? '' : '<div class="acum"><small>Doar administratorul</small><b>Conturile le face și le schimbă administratorul.</b></div>') : '<h2>Cont nou</h2>' + nou) +
+    '<h2>Conturi emise <i>' + (list ? list.length : '…') + '</i></h2>' + (list ? list.map(card).join('') || gol('Niciun cont încă.') : gol('Se încarcă…')) +
+    (demo ? '' : '<h2>Testează o intrare</h2><div class="cd"><div class="cps"><label class="cp">E-mail<input data-m="temail" type="email" autocomplete="off"></label><label class="cp">Parolă<input data-m="tparola" type="password" autocomplete="off"></label></div>' + sBtn('stestlogin', 'Verifică dacă merge', '', 'mare') + (X.test ? '<p class="' + (X.test.ok ? 'bine' : 'rosu') + '"><b>' + esc(X.test.txt) + '</b></p>' : '') + '<p class="small mut">Verifică utilizatorul și parola fără să te scoată din contul tău. Testul apare la „Ultima intrare” a acelui cont.</p></div>');
+}
+
+/* ---------- Registrul CF: fiecare imobil, cu documentele și datele lui ---------- */
+function registruCF() {
+  const docImo = (d) => (D('taskuri')[d.task] || {}).imobil || (D('linii')[d.linie] || {}).imobil;
+  return L('imobile').map((im) => {
+    const docs = L('documente', (d) => docImo(d) === im.id).sort((a, b) => b.la - a.la), cf1 = L('taskuri', (t) => t.imobil === im.id && t.k === 'cf1' && t.stare === 'terminat')[0];
+    const f = {}; if (cf1) cf1.fields.forEach((x) => (f[x.k] = x.val));
+    return { im, docs, f, os: L('comenzi', (o) => o.imobile.includes(im.id)), la: docs.length ? docs[0].la : 0 };
+  }).filter((r) => r.im.cf || r.docs.length).sort((a, b) => b.la - a.la);
+}
+function adminCF() {
+  let rs = registruCF(); const tot = rs.length, nd = rs.reduce((s, r) => s + r.docs.length, 0), nt = rs.reduce((s, r) => s + r.docs.filter((d) => (ocrRec(d.id) || {}).stare === 'gata').length, 0);
+  if (S.qcf) { const q = S.qcf.toLowerCase(); rs = rs.filter((r) => ((r.im.cf || '') + ' ' + (r.im.uat || '') + ' ' + (r.im.adresa || '') + ' ' + (r.im.nr_cad || '') + ' ' + r.os.map((o) => o.nr).join(' ')).toLowerCase().includes(q)); }
+  const card = (r) => '<div class="cd"><div class="ct1"><b>' + (r.im.cf ? 'CF ' + esc(r.im.cf) : 'fără nr. CF') + '</b><span class="small mut">' + esc(r.im.uat || '') + (r.im.judet ? ', ' + esc(r.im.judet) : '') + '</span></div><span class="small mut">' + esc(r.im.adresa || '') + (r.im.nr_cad ? ' · nr. cad. ' + esc(r.im.nr_cad) : '') + '</span>' +
+    (r.f.suprafata || r.f.proprietari || r.f.sarcini ? '<dl class="ctd">' + (r.f.proprietari ? '<dt>Proprietari</dt><dd>' + esc(r.f.proprietari) + '</dd>' : '') + (r.f.suprafata ? '<dt>Suprafață</dt><dd>' + esc(r.f.suprafata) + ' mp</dd>' : '') + (r.f.sarcini ? '<dt>Sarcini</dt><dd>' + esc(r.f.sarcini) + '</dd>' : '') + '</dl>' : '') +
+    (r.docs.length ? r.docs.map((d) => '<div class="dc">' + docLinie(d) + '<small>' + hhmm(d.la) + ' · ' + esc(spName(d.incarcat_de)) + (d.vizibil ? ' · la client' : '') + '</small></div>').join('') : '<div class="dc"><span class="small mut">Niciun document încă.</span></div>') +
+    '<div class="btns">' + r.os.map((o) => sBtn('so', o.nr, o.id, 'mic')).join('') + '</div></div>';
+  return '<a class="inap" href="#" data-a="spg" data-id="">‹ Mai mult</a><h1>Registrul CF <i>' + tot + '</i></h1><p class="sub">' + nd + ' documente · ' + nt + ' cu text extras</p><input class="caut" style="margin-top:10px" data-s="qcf" placeholder="Caută nr. CF, UAT, adresă, comandă" value="' + esc(S.qcf || '') + '"><div class="btns" style="margin-bottom:10px">' + sBtn('scfcsv', 'Descarcă lista (CSV)', '', 'mic') + '</div>' +
+    (rs.length ? rs.map(card).join('') : gol('Nimic aici.', 'Schimbă căutarea.'));
+}
+function csvCF() {
+  const q = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"', rows = [['CF', 'UAT', 'Județ', 'Nr. cadastral', 'Adresă', 'Comenzi', 'Document', 'Încărcat la', 'Încărcat de', 'Text extras', 'La client']];
+  registruCF().forEach((r) => (r.docs.length ? r.docs : [null]).forEach((d) => rows.push([r.im.cf, r.im.uat, r.im.judet, r.im.nr_cad, r.im.adresa, r.os.map((o) => o.nr).join(' '), d ? d.nume : '', d ? new Date(d.la).toISOString().slice(0, 16).replace('T', ' ') : '', d ? spName(d.incarcat_de) : '', d ? ((ocrRec(d.id) || {}).stare === 'gata' ? 'da' : 'nu') : '', d ? (d.vizibil ? 'da' : 'nu') : ''])));
+  return rows.map((r) => r.map(q).join(',')).join('\n');
+}
+
+/* ---------- Datele: ce avem, unde stă, cum ajungi la ele ---------- */
+function adminDate() {
+  const ref = (window.EPAY_CFG && (window.EPAY_CFG.supabaseUrl || '').replace(/^https:\/\/([^.]+)\..*$/, '$1')) || '', panou = 'https://supabase.com/dashboard/project/' + ref;
+  const n = (c, p) => L(c, p).length, docs = L('documente');
+  const r = (ce, cat, unde, leg) => '<tr><td><b>' + ce + '</b><br><span class="small mut">' + unde + '</span></td><td class="nr">' + cat + '</td><td>' + (leg || '') + '</td></tr>';
+  const inApp = (pg, t) => '<a href="#" data-a="spg" data-id="' + pg + '">' + t + '</a>', ext = (u, t) => (ref ? '<a href="' + u + '" target="_blank" rel="noopener">' + t + ' ↗</a>' : '<span class="mut small">doar în aplicația reală</span>');
+  return '<a class="inap" href="#" data-a="spg" data-id="">‹ Mai mult</a><h1>Datele</h1><p class="sub">Ce se adună, unde stă și cum ajungi la ele. Nimic nu stă pe telefon: aplicația le citește de pe server, cu contul.</p>' +
+    '<div class="cd tw"><table class="opis"><thead><tr><th>Ce</th><th>Câte</th><th>Deschide</th></tr></thead><tbody>' +
+    r('Comenzi', n('comenzi'), 'bază de date · platforma_docs / comenzi', '<a href="#" data-a="stab" data-id="comenzi">Comenzi</a>') +
+    r('Clienți', n('clienti'), 'bază de date · clienti (doar echipa)', ext(panou + '/editor', 'tabel')) +
+    r('Imobile și CF-uri', n('imobile'), 'bază de date · imobile', inApp('cf', 'Registrul CF')) +
+    r('Documente (PDF, poze)', docs.length, 'fișiere private · spațiul „documente”', ext(panou + '/storage/buckets/documente', 'fișiere')) +
+    r('Text extras din documente', n('ocr', (x) => x.stare === 'gata'), 'bază de date · ocr', inApp('cf', 'Registrul CF')) +
+    r('Pași de lucru', n('taskuri'), 'bază de date · taskuri', '') +
+    r('Plăți', n('plati'), 'bază de date · plati; banii sunt în Stripe', ext('https://dashboard.stripe.com/payments', 'Stripe')) +
+    r('Mesaje către clienți', n('notificari', (x) => x.dest === 'client'), 'bază de date · notificari', '') +
+    r('Istoric (cine, ce, când)', (R.db.evenimente || []).length, 'bază de date · platforma_evenimente', ext(panou + '/editor', 'tabel')) +
+    r('Conturi și linkuri', SYNC.on && UI.conturi ? UI.conturi.length : '—', 'conturi Supabase + profiluri', inApp('echipa', 'Echipă')) +
+    '</tbody></table></div>' +
+    '<h2>Unde</h2><div class="cd"><p class="small">Baza de date și fișierele: Supabase, proiectul „DD as a service”, Frankfurt. Comenzile de pe site: proiectul „ePay CF site”. Plățile: Stripe. Pagina aplicației: GitHub Pages, fără date. Codul și versiunile: Google Drive, „1 Artefacte / platforma_specialisti”, cu opisul în OPIS_DATE.md.</p>' + (ref ? '<a class="b" href="' + panou + '" target="_blank" rel="noopener">Deschide panoul Supabase ↗</a>' : '') + '</div>';
+}
 function adminMai() {
   const rol = (n, cine, ce) => '<li><b>' + n + '</b><div><span>' + cine + '</span><small>' + ce + '</small></div></li>';
   const adr = location.origin + location.pathname;
-  return '<h1>Mai mult</h1><h2>Cum curge o comandă</h2><ol class="cine">' + rol(1, 'Clientul', 'comandă și plătește cu cardul pe site') + rol(2, 'Automat', 'banca confirmă plata, iar comanda apare aici în cel mult un minut') + rol(3, 'Administratorul sau operatorul', 'verifică plata și comanda, apoi dă OK') + rol(4, 'Specialiștii', 'primesc toți notificare; o ia primul care acceptă și are 90 de minute') + rol(5, 'Specialistul', 'vede doar imobilul (nr. CF, UAT, adresă), fără datele clientului; încarcă PDF-ul și trimite') + rol(6, 'Administratorul', 'e anunțat, verifică documentul și, la rapoarte, adaugă raportul') + rol(7, 'Administratorul', 'apasă „Trimite clientului”; clientul primește documentele') + '</ol>' +
+  return '<h1>Mai mult</h1><div class="tiles"><button data-a="spg" data-id="echipa"><b>Echipă și conturi</b><span>linkuri emise, folosire, test</span></button><button data-a="spg" data-id="cf"><b>Registrul CF</b><span>imobile, documente, text</span></button><button data-a="spg" data-id="date"><b>Datele</b><span>ce avem și unde stă</span></button></div><h2>Cum curge o comandă</h2><ol class="cine">' + rol(1, 'Clientul', 'comandă și plătește cu cardul pe site') + rol(2, 'Automat', 'banca confirmă plata, iar comanda apare aici în cel mult un minut') + rol(3, 'Administratorul sau operatorul', 'verifică plata și comanda, apoi dă OK') + rol(4, 'Specialiștii', 'primesc toți notificare; o ia primul care acceptă și are 90 de minute') + rol(5, 'Specialistul', 'vede doar imobilul (nr. CF, UAT, adresă), fără datele clientului; încarcă PDF-ul și trimite') + rol(6, 'Administratorul', 'e anunțat, verifică documentul și, la rapoarte, adaugă raportul') + rol(7, 'Administratorul', 'apasă „Trimite clientului”; clientul primește documentele') + '</ol>' +
     '<h2>Linkul pentru echipă</h2><div class="cd"><p class="small">Același link pentru administrator, operator și specialiști. Fiecare intră cu contul lui și vede doar partea lui.</p><p><b style="word-break:break-all">' + esc(adr) + '</b></p><p class="small mut">Pe telefon: deschide linkul în Chrome, apoi „Instalează aplicația”. Pe iPhone: Partajează, apoi „Adaugă pe ecranul principal”. Conturile se fac din versiunea completă, la Conturi.</p></div>' +
     '<h2>Unde stau datele</h2><div class="cd"><p class="small">Comenzile, pașii și istoricul stau într-o bază de date Supabase din Frankfurt. PDF-urile stau într-un spațiu privat de fișiere, tot acolo, și se deschid doar cu cont. Pagina aplicației e găzduită gratuit pe GitHub Pages și nu conține date.</p></div>' +
     (typeof cardNotificari === 'function' ? cardNotificari() : '') +
@@ -237,7 +319,7 @@ renderApp = function () {
   let t = S.t && D('taskuri')[S.t], o = S.o && D('comenzi')[S.o];
   if (sp && t && t.specialist !== UI.spec) { t = null; S.t = null; }
   if (sp) { o = null; S.o = null; }
-  const corp = sp ? (t ? specPas(t) : { noi: specNoi, lucru: specLucru, trimise: specTrimise }[S.tab]()) : (t ? adminPas(t) : o ? adminComanda(o) : { azi: adminAzi, comenzi: adminComenzi, mesaje: () => '<h1>Mesaje</h1>' + cereriView(), mai: adminMai }[S.tab]());
+  const corp = sp ? (t ? specPas(t) : { noi: specNoi, lucru: specLucru, trimise: specTrimise }[S.tab]()) : (t ? adminPas(t) : o ? adminComanda(o) : { azi: adminAzi, comenzi: adminComenzi, mesaje: () => '<h1>Mesaje</h1>' + cereriView(), mai: () => ({ echipa: adminEchipa, cf: adminCF, date: adminDate }[S.pg] || adminMai)() }[S.tab]());
   const nr = { azi: sp ? 0 : randulTau().length, mesaje: sp ? 0 : intrebariDeschise().length, noi: sp ? L('oferte', (x) => x.spec === UI.spec && x.raspuns === 'deschisa').length : 0, lucru: sp ? L('taskuri', (x) => x.specialist === UI.spec && ['atribuit', 'blocat'].includes(x.stare)).length : 0 };
   const deschise = [...document.querySelectorAll('details[data-k][open]')].map((d) => d.dataset.k);
   const lista = L('specialisti', (s) => !s.spec.includes('analist'));
@@ -253,13 +335,15 @@ renderApp = function () {
 };
 
 Object.assign(A, {
-  stab: (d) => { S.tab = d.id; S.o = S.t = null; window.scrollTo(0, 0); if (d.id === 'mesaje' && typeof incarcaCereriApp === 'function' && CERERI_APP.rows == null) return incarcaCereriApp(); },
+  stab: (d) => { S.tab = d.id; S.o = S.t = null; S.pg = null; window.scrollTo(0, 0); if (d.id === 'mesaje' && typeof incarcaCereriApp === 'function' && CERERI_APP.rows == null) return incarcaCereriApp(); },
   so: (d) => { MODAL = null; if (!D('comenzi')[d.id]) { S.tab = 'mesaje'; S.o = S.t = null; return; } S.o = d.id; S.t = null; window.scrollTo(0, 0); },
   open: (d) => A.so(d),
   st: (d) => { const t = D('taskuri')[d.id]; if (!t) return; S.t = t.id; S.o = t.comanda; window.scrollTo(0, 0); if (!eSpec() && extern(t) && t.stare === 'terminat' && !t.vazut_admin) t.vazut_admin = now(); if (!eSpec() && intern(t) && ['disponibil', 'oferit'].includes(t.stare) && internId()) forceAssign(t.id, internId()); },
   sback: () => { if (S.t && !eSpec()) S.t = null; else { S.t = null; S.o = null; } },
   sfil: (d) => { S.f = d.id; S.tab = 'comenzi'; S.o = S.t = null; },
-  spreia: (d) => { const o = D('comenzi')[d.id]; if (!o || o.preluata_la) return; o.preluata_la = now(); o.preluata_de = (UI.auth || {}).nume || 'administrator'; ev('comanda.preluata', o.preluata_de, { k: 'comanda', id: o.id }, { verificat: ['plata', 'acord', 'imobil', 'servicii', 'client'], suma: o.total, acord: o.acord === true }); advance(); toast('Preluată. Pasul a plecat la specialiști.'); },
+  spreia: (d) => { if (preiaComanda(d.id, (UI.auth || {}).nume)) toast('Preluată. Clientul e anunțat, iar pasul a plecat la specialiști.'); },
+  slipsa: (d) => openModal('Ce lipsește din comandă?', '<p class="small mut">Clientul primește mesajul tău și linkul unde completează. Comanda rămâne în așteptare.</p>' + mf('txt', 'Ce îi ceri clientului', 'textarea') + btn('scomplet', 'Trimite clientului', { id: d.id, c: 'pri' })),
+  scomplet: (d) => { if (cereCompletare(d.id, val('txt'), (UI.auth || {}).nume)) { MODAL = null; toast('Am cerut clientului să completeze.'); } else toast('Scrie ce lipsește.'); },
   strimitecl: (d) => { if (trimiteClient(d.id, (UI.auth || {}).nume)) toast('Comanda a plecat la client.'); },
   slink: async () => { const i = document.querySelector('form[data-f="login"] [name="email"]'), email = i && i.value.trim(); if (!email) { toast('Scrie întâi e-mailul contului.'); return; } if (!SYNC.sb) { toast('Legătura cu serverul nu e pornită.'); return; } const { error } = await SYNC.sb.auth.signInWithOtp({ email, options: { shouldCreateUser: false, emailRedirectTo: location.origin + location.pathname } }); toast(error ? 'Nu am putut trimite: ' + error.message : 'Ți-am trimis linkul. Deschide-l pe acest telefon.'); },
   strimite: (d) => { forceAssign(d.id, d.x); toast('Trimis la ' + spName(d.x) + '.'); },
@@ -275,12 +359,37 @@ Object.assign(A, {
     if (u.a === 'st' && !u.sec) { A.st({ id: u.id }); toast('Gata. Urmează: ' + D('taskuri')[u.id].n); } else { S.t = null; toast(o.stare === 'livrata' ? 'Comanda a plecat la client.' : 'Gata.'); }
   },
   sca: (d) => { S.ca = d.id || null; S.o = S.t = null; S.tab = d.id ? 'noi' : 'azi'; UI.knownOffers = null; },
-  sexpl: (d) => adaugaExplicatie(d.id)
+  sexpl: (d) => adaugaExplicatie(d.id),
+  spg: (d) => { S.tab = 'mai'; S.pg = d.id || null; S.o = S.t = null; X.test = null; window.scrollTo(0, 0); if ((d.id === 'echipa' || d.id === 'date') && SYNC.on) return incarcaEchipa(); },
+  slinkcopie: async () => { try { await navigator.clipboard.writeText(adresa()); toast('Linkul e copiat.'); } catch (e) { openModal('Linkul aplicației', '<textarea rows="3" style="width:100%">' + esc(adresa()) + '</textarea>'); } },
+  sinv: async (d) => { const c = (UI.conturi || []).find((x) => x.id === d.id); if (!c) return; try { await navigator.clipboard.writeText(invitatie(c)); toast('Invitația e copiată. O poți lipi în mesaj.'); } catch (e) { openModal('Invitația', '<textarea rows="8" style="width:100%">' + esc(invitatie(c)) + '</textarea>'); } },
+  scontnou: async () => {
+    const rol = val('rol'), email = String(val('email')).trim().toLowerCase(), nume = String(val('nume')).trim(), parola = val('parola') || null; let spid = rol === 'specialist' ? val('spid') : null, s = null;
+    if (!email) { toast('Scrie e-mailul.'); return; }
+    if (rol === 'specialist' && spid === '__nou') { if (!nume) { toast('Scrie numele specialistului.'); return; } s = { id: uid('sp'), status: 'activ', tura: true, nume, spec: [val('spec') || 'ancpi'], judete: String(val('judete') || '*').split(',').map((x) => x.trim()).filter(Boolean), uat: '', cap: 3, rating: 0, atestat: '', tel: '', email }; spid = s.id; }
+    try {
+      const r = await fnConturi({ actiune: 'creeaza', email, nume, rol, specialist_id: spid || null, parola, redirect: adresa() });
+      if (s) { D('specialisti')[s.id] = s; ev('specialist.creat', (UI.auth || {}).nume || 'admin', { k: 'specialist', id: s.id }); R.save(); }
+      await incarcaEchipa();
+      openModal(r.invitat ? 'Invitație trimisă pe e-mail' : 'Cont creat', '<p class="small">Trimite-i persoanei textul de mai jos' + (parola ? ', împreună cu parola pe care ai ales-o' : '') + '.</p><textarea rows="8" style="width:100%">' + esc(invitatie({ email })) + '</textarea>');
+    } catch (e) { toast(e.message); }
+  },
+  spushtest: async (d) => { try { const { data, error } = await SYNC.sb.functions.invoke('dispecer', { body: { actiune: 'test_push_cont', user_id: d.id } }); toast(error || !data || data.eroare ? 'Nu am putut trimite: ' + ((data && data.eroare) || (error && error.message) || 'eroare') : data.trimise ? 'Notificare trimisă pe ' + data.trimise + (data.trimise === 1 ? ' dispozitiv.' : ' dispozitive.') : 'Nu s-a trimis: ' + (data.erori ? 'telefonul a refuzat-o.' : 'contul nu are notificările pornite.')); } catch (e) { toast(e.message); } },
+  stestlogin: async () => {
+    const email = String(val('temail')).trim(), parola = val('tparola'); if (!email || !parola) { toast('Scrie e-mailul și parola.'); return; }
+    const c = window.supabase.createClient(window.EPAY_CFG.supabaseUrl, window.EPAY_CFG.supabaseKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'dd_test_intrare' } });
+    const { data, error } = await c.auth.signInWithPassword({ email, password: parola });
+    if (error) { X.test = { ok: false, txt: 'Nu merge: e-mail sau parolă greșite, ori cont blocat.' }; return; }
+    const { data: p } = await c.from('profiluri').select('rol,nume,specialist_id').eq('user_id', data.user.id).maybeSingle();
+    await c.auth.signOut({ scope: 'local' });
+    X.test = p ? { ok: true, txt: 'Merge. ' + email + ' intră ca ' + (ROL2[p.rol] || p.rol) + (p.specialist_id ? ' · ' + spName(p.specialist_id) : '') + '.' } : { ok: false, txt: 'Parola e bună, dar contul nu are rol în aplicație.' };
+  },
+  scfcsv: () => dl('registru_cf_' + new Date().toISOString().slice(0, 10) + '.csv', '\ufeff' + csvCF(), 'text/csv;charset=utf-8')
 });
 document.addEventListener('input', (e) => {
-  if (!e.target.dataset || e.target.dataset.s !== 'q') return;
-  S.q = e.target.value; const pos = e.target.selectionStart; renderApp();
-  const n = document.querySelector('[data-s="q"]'); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (x) { /* fără selecție */ } }
+  const k = e.target.dataset && e.target.dataset.s; if (k !== 'q' && k !== 'qcf') return;
+  S[k] = e.target.value; const pos = e.target.selectionStart; renderApp();
+  const n = document.querySelector('[data-s="' + k + '"]'); if (n) { n.focus(); try { n.setSelectionRange(pos, pos); } catch (x) { /* fără selecție */ } }
 });
 document.addEventListener('change', (e) => {
   const k = e.target.dataset && e.target.dataset.s; if (k !== 'ca' && k !== 'per') return;

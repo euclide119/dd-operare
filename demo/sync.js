@@ -6,6 +6,8 @@
 const SYNC = { on: false, sb: null, user: null, prof: null, snap: {}, evSent: 0, timer: null, err: '', onchange: null };
 const OBJ_COLS = ['clienti', 'imobile', 'comenzi', 'linii', 'taskuri', 'specialisti', 'oferte', 'plati', 'oferte_pret', 'documente', 'notificari', 'probleme', 'sugestii', 'tinte', 'contracte', 'fise', 'juridic', 'servicii', 'acte', 'dosare', 'ocr', 'intrebari'];
 const META_KEYS = ['v', 'seq', 'settings', 'rr', 'cosuri', 'surse', 'asteptare', 'mesaje', 'planop'];
+/* date despre clienți: stau în rândul meta/privat, pe care specialistul nu îl poate citi (meta/main rămâne comun) */
+const META_PRIVAT = ['cosuri', 'asteptare', 'mesaje'];
 
 const syncAvailable = () => !!(window.EPAY_CFG && window.EPAY_CFG.supabaseUrl && window.EPAY_CFG.supabaseKey && window.supabase);
 
@@ -21,7 +23,12 @@ async function syncLogin(email, pass) {
   if (error) throw new Error('Email sau parolă greșite.');
   await afterLogin(data.user);
 }
-async function syncLogout() { if (SYNC.sb) await SYNC.sb.auth.signOut(); SYNC.on = false; SYNC.prof = null; SYNC.user = null; }
+async function syncLogout() {
+  if (SYNC.sb) await SYNC.sb.auth.signOut();
+  /* la ieșire nu rămâne nimic pe dispozitiv: nici datele din memorie, nici capturile de pagini */
+  if (SYNC.on) { try { R.db = emptyDb(); SYNC.snap = {}; indexedDB.deleteDatabase('dd_capturi'); sessionStorage.removeItem('epay_ui'); sessionStorage.removeItem('dd_simplu'); } catch (e) { /* ignor */ } }
+  SYNC.on = false; SYNC.prof = null; SYNC.user = null;
+}
 async function afterLogin(user) {
   SYNC.user = user;
   const { data: p, error } = await SYNC.sb.from('profiluri').select('*').eq('user_id', user.id).single();
@@ -53,7 +60,7 @@ async function syncPush() {
     const rows = [];
     OBJ_COLS.forEach((col) => Object.values(R.db[col] || {}).forEach((d) => { const k = col + '/' + d.id; const s = JSON.stringify(d); if (SYNC.snap[k] !== s) rows.push({ col, id: d.id, data: d, k, s }); }));
     const admin = ['admin', 'tehnic', 'operator'].includes(SYNC.prof.rol);
-    if (admin) { const m = {}; META_KEYS.forEach((k) => (m[k] = R.db[k])); const s = JSON.stringify(m); if (SYNC.snap['meta/main'] !== s) rows.push({ col: 'meta', id: 'main', data: m, k: 'meta/main', s }); }
+    if (admin) [['main', META_KEYS.filter((k) => !META_PRIVAT.includes(k))], ['privat', META_PRIVAT]].forEach(([id, ks]) => { const m = {}; ks.forEach((k) => (m[k] = R.db[k])); const s = JSON.stringify(m); if (SYNC.snap['meta/' + id] !== s) rows.push({ col: 'meta', id, data: m, k: 'meta/' + id, s }); });
     const ts = new Date().toISOString();
     if (admin) {
       /* adminul are drept de insert + update: trimitem în pachete de câte 200 */

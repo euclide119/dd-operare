@@ -128,3 +128,14 @@ body{background:var(--s-bg);color:var(--s-ink)}
 .rd.nou{animation:nou 1.1s ease-in-out infinite}@keyframes nou{50%{background:var(--s-ok-soft);box-shadow:0 0 0 3px var(--s-ok-soft)}}
 @media(prefers-reduced-motion:reduce){.rd.nou{animation:none;background:var(--s-ok-soft)}}
 .acum .vf .dc{padding:10px 12px}
+/* Mai mult: plăci, conturi, registru, opis */
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tiles button{border:1px solid var(--s-line);background:#fff;border-radius:14px;padding:12px 10px;font:inherit;text-align:left;cursor:pointer}
+.tiles b{display:block;font-size:14px;line-height:1.25}.tiles span{font-size:12px;color:var(--s-mut)}
+.ct{background:#fff;border:1px solid var(--s-line);border-radius:14px;padding:12px 14px;margin-bottom:8px}
+.ct1{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px}
+.ctd{display:grid;grid-template-columns:110px 1fr;gap:3px 10px;margin:8px 0 0;font-size:13.5px}.ctd dt{color:var(--s-mut)}.ctd dd{margin:0}
+.s2 .rosu{color:var(--s-bad)}.s2 .bine{color:var(--s-ok)}
+.s2 .b.mic{padding:6px 10px;font-size:13px;border-radius:10px}
+.opis{width:100%;border-collapse:collapse;font-size:14px}.opis th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--s-mut);padding:4px 6px}
+.opis td{padding:9px 6px;border-top:1px solid var(--s-line);vertical-align:top}.opis .nr{font-weight:700;white-space:nowrap}.opis a{color:var(--s-brand);font-weight:600;text-decoration:none}
